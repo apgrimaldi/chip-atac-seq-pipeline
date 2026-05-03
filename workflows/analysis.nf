@@ -42,7 +42,7 @@ workflow ATAC_CHIP_PIPELINE {
     // 4. Ordinamento
     SAMTOOLS_SORT ( BOWTIE2.out.bam )
 
-    // 5. Duplicati (Normalizziamo l'output a terna [meta, bam, bai])
+    // 5. Duplicati
     PICARD_MARKDUPLICATES ( SAMTOOLS_SORT.out.bam, [], [] )
     ch_versions = ch_versions.mix(PICARD_MARKDUPLICATES.out.versions)
     
@@ -55,27 +55,22 @@ workflow ATAC_CHIP_PIPELINE {
     
     if (blacklist_val) {
         ch_blacklist = file(blacklist_val)
-        
-        // FILTERING riceve la terna da Picard e la blacklist
         FILTERING ( ch_picard_bams, ch_blacklist )
-        
-        // RIGENERIAMO IL BAI dopo il filtraggio
         SAMTOOLS_INDEX ( FILTERING.out.bam )
-        
         ch_final_bams = SAMTOOLS_INDEX.out.bam_bai
         ch_versions = ch_versions.mix(FILTERING.out.versions, SAMTOOLS_INDEX.out.versions)
     } else {
-        ch_final_bams = ch_picard_bams
+        // Se non c'è blacklist, indicizziamo direttamente l'output di Picard
+        SAMTOOLS_INDEX ( ch_picard_bams.map { it -> [it[0], it[1]] } )
+        ch_final_bams = SAMTOOLS_INDEX.out.bam_bai
     }
 
-    // 7. Statistiche Allineamento
+    // 7. Statistiche Allineamento (Parte appena il BAM è pronto)
     SAMTOOLS_STATS ( ch_final_bams.map { it -> [ it[0], it[1] ] } )
     ch_versions = ch_versions.mix(SAMTOOLS_STATS.out.versions)
 
-    // 8. DeepTools (Generazione BigWig)
-    DEEPTOOLS ( 
-        (ch_final_bams) , // Passiamo direttamente la terna meta, bam, baigenes_bed
-    )
+    // 8. DeepTools (Parte in parallelo a MACS3)
+    DEEPTOOLS ( ch_final_bams )
 
     // 9. Peak Calling
     ch_peaks = Channel.empty()
@@ -83,47 +78,51 @@ workflow ATAC_CHIP_PIPELINE {
 
     if (params.protocol == 'atac') {
         ch_macs_input = ch_final_bams.map { it -> [ it[0], it[1] ] }
+        
         MACS3_ATAC_NARROW ( ch_macs_input )
         MACS3_ATAC_BROAD  ( ch_macs_input )
+        
         ch_peaks = MACS3_ATAC_NARROW.out.peaks.mix(MACS3_ATAC_BROAD.out.peaks)
         ch_frip_peaks = MACS3_ATAC_NARROW.out.peaks 
-        ch_versions = ch_versions.mix(MACS3_ATAC_NARROW.out.versions, MACS3_ATAC_BROAD.out.versions)
     } 
     else if (params.protocol == 'chip') {
+        // Separiamo i Controlli (Input/IgG)
         ch_control_bams = ch_final_bams
             .filter { it -> 
                 def m = it[0]
                 m.antibody == 'none' || !m.antibody || m.antibody == 'IgG' || m.antibody == '' 
             }
-            .map { it -> [ it[0].id, it[1] ] }
+            .map { it -> [ it[0].id, it[1] ] } // Chiave: ID del controllo
 
+        // Separiamo gli IP e li uniamo ai rispettivi controlli
         ch_macs3_chip_input = ch_final_bams
             .filter { it -> 
                 def m = it[0]
                 m.antibody && m.antibody != 'none' && m.antibody != 'IgG' && m.antibody != '' 
             }
-            .map { it -> [ it[0].control, it[0], it[1] ] } 
-            .join(ch_control_bams)
-            .map { it -> [ it[1], it[2], it[3] ] }
+            .map { it -> [ it[0].control, it[0], it[1] ] } // Chiave: ID del controllo cercato
+            .join(ch_control_bams) // Unisce l'IP al suo BAM di controllo
+            .map { it -> [ it[1], it[2], it[3] ] } // Formato: [meta, ip_bam, control_bam]
 
         MACS3_CHIP_NARROW ( ch_macs3_chip_input )
         MACS3_CHIP_BROAD  ( ch_macs3_chip_input )
+        
         ch_peaks = MACS3_CHIP_NARROW.out.peaks.mix(MACS3_CHIP_BROAD.out.peaks)
         ch_frip_peaks = MACS3_CHIP_NARROW.out.peaks
-        ch_versions = ch_versions.mix(MACS3_CHIP_NARROW.out.versions, MACS3_CHIP_BROAD.out.versions)
     }
 
-    // 10. FRiP
-    ch_frip_input = ch_final_bams.map { it -> [ it[0], it[1] ] }.join(ch_frip_peaks)
+    // 10. FRiP (Eseguito non appena i picchi di un campione sono pronti)
+    ch_frip_input = ch_final_bams
+        .map { it -> [ it[0], it[1] ] }
+        .join(ch_frip_peaks)
+    
     CALC_FRIP ( ch_frip_input )
-    ch_versions = ch_versions.mix(CALC_FRIP.out.versions)
 
     // 11. Annotazione
     def fasta = params.genomes[ params.genome ]?.fasta ?: null
     def gtf   = params.genomes[ params.genome ]?.gtf   ?: null
     if (fasta && gtf) {
         HOMER_ANNOTATEPEAKS ( ch_peaks, file(fasta), file(gtf) )
-        ch_versions = ch_versions.mix(HOMER_ANNOTATEPEAKS.out.versions)
     }
 
     // 12. MULTIQC
