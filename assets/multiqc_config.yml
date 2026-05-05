@@ -1,7 +1,7 @@
 title: "Analisi ChIP-seq / ATAC-seq"
 subtitle: "Report Risultati Pipeline"
 
-# Ordine delle sezioni: mettiamo tutto prima e le versioni alla fine
+# Ordine delle sezioni: definisce la gerarchia del report
 report_section_order:
     fastqc:
         order: -90
@@ -15,18 +15,37 @@ report_section_order:
         order: -50
     macs3:
         order: -40
-    frip:
+    frip_score:         # Deve corrispondere all'ID sotto in custom_data
         order: -30
-    software_versions: # Forza le versioni in fondo
+    peak_annotations:   # Sezione per le annotazioni
+        order: -20
+    software_versions:
         order: -10
 
-# Rimuove i suffissi dai nomi dei campioni per leggere meglio i grafici
+# Rimuove i suffissi dai nomi dei campioni per pulire i grafici
 sample_names_replace_suffixes:
     - "_trimmed"
     - "_aligned"
     - ".sorted"
+    - ".filtered"
     - "_peaks"
     - ".summary"
+    - ".FRiP"
 
-# Nasconde i percorsi locali dei file
+# Nasconde i percorsi locali dei file per privacy/ordine
 show_analysis_paths: false
+
+# CONFIGURAZIONE CUSTOM PER FRIP E ANNOTAZIONI
+custom_data:
+  frip_score:
+    file_format: "tsv"
+    section_name: "FRiP Score"
+    description: "Fraction of Reads in Peaks: indica la qualità dell'arricchimento del segnale."
+    plot_type: "table"
+    pconfig:
+      format: "{:,.4f}"
+
+# Se i tuoi file di annotazione sono tabelle semplici (es. da HOMER o script custom)
+sp:
+  frip_score:
+    fn: "*.FRiP.txt"
