@@ -2,7 +2,8 @@ process HOMER_ANNOTATEPEAKS {
     tag "$meta.id"
     label 'process_medium'
 
-    container 'quay.io/biocontainers/homer:4.11--pl526hc9558a2_3'
+    // Versione leggermente più recente e stabile
+    container 'quay.io/biocontainers/homer:4.11--pl5321h9ee0642_3'
 
     input:
     tuple val(meta), path(peak)
@@ -14,7 +15,8 @@ process HOMER_ANNOTATEPEAKS {
     path  "versions.yml"                        , emit: versions
 
     script:
-    def prefix = "${peak.baseName}"
+    // USA meta.id per il prefix, è molto più sicuro di peak.baseName
+    def prefix = task.ext.prefix ?: "${meta.id}"
     def VERSION = '4.11' 
     """
     annotatePeaks.pl \\
