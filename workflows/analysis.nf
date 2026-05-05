@@ -17,9 +17,6 @@ include { CALC_FRIP }               from '../modules/local/calc_frip.nf'
 include { DEEPTOOLS }               from '../modules/local/deeptools.nf'
 include { MULTIQC }                 from '../modules/local/multiqc.nf'
 include { SAMTOOLS_INDEX }          from '../modules/local/samtools_index.nf'
-include { DEEPTOOLS_COMPUTEMATRIX } from '../modules/local/deeptools_computematrix.nf'
-include { DEEPTOOLS_PLOTPROFILE }   from '../modules/local/deeptools_plotprofile.nf'
-
 
 workflow ATAC_CHIP_PIPELINE {
     take:
