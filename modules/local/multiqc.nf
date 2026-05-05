@@ -1,20 +1,21 @@
 process MULTIQC {
     label 'process_medium'
-    container 'quay.io/biocontainers/multiqc:1.23--pyhdfd78af_0'
+    container 'quay.io/biocontainers/multiqc:1.21--pyhdfd78af_0'
 
     publishDir "${params.outdir}/00_MultiQC", mode: 'copy'
 
     input:
-    path multiqc_config      // 1. Configurazione estetica
-    path workflow_summary    // 2. Info Genoma/Protocollo (Aggiunto qui!)
-    path ('fastqc/*')        // 3.
-    path ('trimgalore/*')    // 4.
-    path ('alignment/*')     // 5.
-    path ('picard/*')        // 6.
-    path ('samtools/*')      // 7.
-    path ('macs3/*')         // 8.
-    path ('frip/*')          // 9.
-    path versions           // 10. Versioni software
+    path multiqc_config      
+    path workflow_summary    
+    path ('fastqc/*')        
+    path ('trimgalore/*')    
+    path ('alignment/*')     
+    path ('picard/*')        
+    path ('samtools/*')      
+    path ('macs3/*')         
+    path ('frip/*')          // I tuoi file .FRiP.txt finiscono qui
+    path ('annotations/*')   // Aggiunto per le annotazioni (Homer/ChIPseeker)
+    path versions            
 
     output:
     path "*multiqc_report.html", emit: report
