@@ -2,7 +2,7 @@ process HOMER_ANNOTATEPEAKS {
     tag "$meta.id"
     label 'process_medium'
 
-    // Versione leggermente più recente e stabile
+    // Questa versione è verificata e stabile su quay.io
     container 'quay.io/biocontainers/homer:4.11--pl526hc9558a2_3'
 
     input:
@@ -11,13 +11,13 @@ process HOMER_ANNOTATEPEAKS {
     path  gtf
 
     output:
+    // Manteniamo esattamente il nome che si aspetta il tuo workflow
     tuple val(meta), path("*.annotatePeaks.txt"), emit: txt
     path  "versions.yml"                        , emit: versions
 
     script:
-    // USA meta.id per il prefix, è molto più sicuro di peak.baseName
+    // USA meta.id: è una stringa garantita, evita l'errore 'null object'
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def VERSION = '4.11' 
     """
     annotatePeaks.pl \\
         $peak \\
@@ -28,7 +28,7 @@ process HOMER_ANNOTATEPEAKS {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        homer: $VERSION
+        homer: 4.11
     END_VERSIONS
     """
 }
