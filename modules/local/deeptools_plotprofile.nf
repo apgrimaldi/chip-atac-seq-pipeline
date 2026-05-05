@@ -9,17 +9,20 @@ process DEEPTOOLS_PLOTPROFILE {
     output:
     tuple val(meta), path("*.pdf"), emit: pdf
     tuple val(meta), path("*.tab"), emit: table
-    path  "versions.yml"          , emit: versions
+    path "versions.yml"           , emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
 
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
     plotProfile \\
-        $args \\
         --matrixFile $matrix \\
         --outFileName ${prefix}.plotProfile.pdf \\
-        --outFileNameData ${prefix}.plotProfile.tab
+        --outFileNameData ${prefix}.plotProfile.tab \\
+        $args
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
