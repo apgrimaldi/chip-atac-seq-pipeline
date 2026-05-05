@@ -15,8 +15,16 @@ process MACS3_CHIP_BROAD {
     def prefix   = "${meta.id}_broad"
     def format   = meta.single_end ? 'BAM' : 'BAMPE'
     
-    // Converte hg38 o GRCh38 in 'hs' (human), altrimenti usa il valore originale
-    def m_genome = (params.genome == 'hg38' || params.genome == 'GRCh38') ? 'hs' : params.genome
+    // Mappa universale per la traduzione dei genomi in codici MACS3
+    def genome_map = [
+        'hg38': 'hs', 'GRCh38': 'hs', 'hg19': 'hs',
+        'mm10': 'mm', 'mm9': 'mm', 'GRCm38': 'mm',
+        'dm6': 'dm', 'ce11': 'ce'
+    ]
+    
+    // Se il genoma è nella mappa usa il codice (hs, mm...), 
+    // altrimenti usa params.genome (dimensione numerica o nome custom)
+    def m_genome = genome_map[params.genome] ?: params.genome
 
     """
     macs3 callpeak \\
