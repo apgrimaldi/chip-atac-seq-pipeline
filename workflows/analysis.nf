@@ -22,6 +22,22 @@ include { SAMTOOLS_INDEX }         from '../modules/local/samtools_index.nf'
 include { DEEPTOOLS_COMPUTEMATRIX } from '../modules/local/deeptools_computematrix.nf'
 include { DEEPTOOLS_PLOTPROFILE }   from '../modules/local/deeptools_plotprofile.nf'
 
+process PREPARE_TSS_BED {
+    executor 'local' // Veloce, non serve mandarlo in coda
+    input:  path gtf
+    output: path "tss_regions.bed"
+    script:
+    """
+    awk '\$3=="transcript"' $gtf | \
+    awk 'BEGIN{OFS="\\t"}{if(\$7=="+") print \$1,\$4,\$4+1,\$10,".",\$7; else print \$1,\$5-1,\$5,\$10,".",\$7}' | \
+    sed 's/;//g; s/\"//g' > tss_regions.bed
+    """
+}
+
+// Nel main del workflow:
+PREPARE_TSS_BED(file(gtf_file))
+ch_tss_bed = PREPARE_TSS_BED.out
+
 workflow ATAC_CHIP_PIPELINE {
     take:
     ch_input    // Dal main.nf
@@ -36,15 +52,14 @@ workflow ATAC_CHIP_PIPELINE {
     def fasta_file     = params.fasta_file ?: params.genomes[ params.genome ]?.fasta ?: null
     def gtf_file       = params.gtf_file ?: params.genomes[ params.genome ]?.gtf ?: null
 
-    // --- PREPARAZIONE TSS BED (Risolve l'errore IndexError di deepTools) ---
-    // Estraiamo i TSS dal GTF una sola volta per tutto il workflow
     ch_tss_bed = Channel.fromPath(gtf_file)
-        .map { gtf ->
-            def bed = "tss_regions.bed"
-            def cmd = "awk '\$3==\"transcript\"' $gtf | awk 'BEGIN{OFS=\"\\t\"}{if(\$7==\"+\") print \$1,\$4,\$4+1,\$10,\".\",\$7; else print \$1,\$5-1,\$5,\$10,\".\",\$7}' | sed 's/;//g; s/\"//g' > $bed"
-            cmd.execute()
-            return file(bed)
-        }
+    .map { gtf ->
+        // Creiamo un nome unico o usiamo quello standard
+        def bed_file = task.workDir.resolve("tss_regions.bed") 
+        // Eseguiamo il comando e restituiamo il file oggetto
+        "awk '\$3==\"transcript\"' ${gtf} | awk 'BEGIN{OFS=\"\\t\"}{if(\$7==\"+\") print \$1,\$4,\$4+1,\$10,\".\",\$7; else print \$1,\$5-1,\$5,\$10,\".\",\$7}' | sed 's/;//g; s/\"//g' > tss_regions.bed".execute()
+        return file("${workflow.launchDir}/tss_regions.bed") // Forza il recupero del file appena creato
+    }
 
     // --- INIZIO STEPS ---
 
