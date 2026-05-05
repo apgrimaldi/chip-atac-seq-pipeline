@@ -74,12 +74,16 @@ workflow ATAC_CHIP_PIPELINE {
     SAMTOOLS_STATS ( ch_final_bams.map { it -> [ it[0], it[1] ] } )
     ch_versions = ch_versions.mix(SAMTOOLS_STATS.out.versions)
 
-    // 8. DeepTools (Fingerprint e BigWig)
-    DEEPTOOLS ( ch_final_bams )
-    ch_versions = ch_versions.mix(DEEPTOOLS.out.versions)
+  // 8. DeepTools (Fingerprint e BigWig)
+DEEPTOOLS ( ch_final_bams )
+ch_versions = ch_versions.mix(DEEPTOOLS.out.versions)
 
-    // I BigWig sono generati dal modulo DEEPTOOLS precedente
-     DEEPTOOLS_TSS ( DEEPTOOLS.out.bw, file(gtf_file) )
+// 8b. TSS Profiling
+// Usiamo .join o ci assicuriamo che l'output sia una tupla
+DEEPTOOLS_TSS ( 
+    DEEPTOOLS.out.bw, 
+    file(params.gtf) 
+)
 
     // 9. Peak Calling
     ch_peaks = Channel.empty()
