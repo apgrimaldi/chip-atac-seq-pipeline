@@ -35,9 +35,6 @@ workflow ATAC_CHIP_PIPELINE {
     def fasta_file     = params.fasta_file ?: params.genomes[ params.genome ]?.fasta ?: null
     def gtf_file       = params.gtf_file ?: params.genomes[ params.genome ]?.gtf ?: null
 
-    // 1. Creazione BED (Corretto: una sola chiamata pulita)
-    PREPARE_TSS_BED(file(gtf_file))
-    ch_tss_bed = PREPARE_TSS_BED.out
 
     // --- INIZIO STEPS ---
 
