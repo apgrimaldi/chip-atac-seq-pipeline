@@ -125,7 +125,11 @@ workflow ATAC_CHIP_PIPELINE {
         HOMER_ANNOTATEPEAKS ( ch_peaks, file(fasta), file(gtf) )
     }
 
-    // 12. MULTIQC
+   // 12. MULTIQC
+    ch_versions_multiqc = ch_versions
+        .unique()
+        .collectFile(name: 'collated_versions.yml')
+
     MULTIQC (
         ch_multiqc_config.collect().ifEmpty([]),
         Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}").collectFile(name: 'summary.txt'),
@@ -136,6 +140,6 @@ workflow ATAC_CHIP_PIPELINE {
         SAMTOOLS_STATS.out.stats.map{ it[1] }.collect().ifEmpty([]),
         DEEPTOOLS.out.bw.collect().ifEmpty([]), 
         ch_peaks.map{ it[1] }.collect().ifEmpty([]),
-        ch_versions.unique().collect().ifEmpty([])
+        ch_versions_multiqc.collect() // Passiamo il file collezionato
     )
 }
