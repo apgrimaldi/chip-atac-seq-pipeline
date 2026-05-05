@@ -1,4 +1,4 @@
-process FRIP_SCORE {
+process CALC_FRIP {
     tag "$meta.id"
     label 'process_medium' // Assicurati che 'process_medium' abbia abbastanza memoria nel config
 
