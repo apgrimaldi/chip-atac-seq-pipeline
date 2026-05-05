@@ -14,9 +14,10 @@ process MULTIQC {
     path ('samtools/*')      // 7
     path ('deeptools/*')     // 8  
     path ('macs3/*')         // 9
-    path ('frip/*')          // 10
-    path ('homer/*')         // 11 
-    path versions            // 12 
+    path ('frip/*')          
+    path ('homer/*')         
+    path ('tss/*')           
+    path versions
 
     output:
     path "*multiqc_report.html", emit: report
