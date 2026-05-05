@@ -1,23 +1,26 @@
 nextflow.enable.dsl=2
 
 // --- INCLUDE DEI MODULI ---
-include { FASTQC } from '../modules/local/fastqc.nf'
-include { TRIMGALORE } from '../modules/local/trimgalore.nf'
-include { BOWTIE2 } from '../modules/local/bowtie2.nf'
-include { SAMTOOLS_SORT } from '../modules/local/samtools_sort.nf'
-include { SAMTOOLS_STATS } from '../modules/local/samtools_stats.nf'
-include { PICARD_MARKDUPLICATES } from '../modules/local/picard_markduplicates.nf'
-include { FILTERING } from '../modules/local/filtering.nf'
-include { MACS3_ATAC_NARROW } from '../modules/local/macs3_atac_narrow.nf'
-include { MACS3_ATAC_BROAD } from '../modules/local/macs3_atac_broad.nf'
-include { MACS3_CHIP_NARROW } from '../modules/local/macs3_chip_narrow.nf'
-include { MACS3_CHIP_BROAD } from '../modules/local/macs3_chip_broad.nf'
-include { HOMER_ANNOTATEPEAKS } from '../modules/local/homer_annotate.nf'
-include { CALC_FRIP } from '../modules/local/calc_frip.nf'
-include { DEEPTOOLS } from '../modules/local/deeptools.nf'
-include { MULTIQC } from '../modules/local/multiqc.nf'
-include { SAMTOOLS_INDEX } from '../modules/local/samtools_index.nf'
-include { DEEPTOOLS_TSS } from '../modules/local/deeptools_tss.nf'
+include { FASTQC }                 from '../modules/local/fastqc.nf'
+include { TRIMGALORE }             from '../modules/local/trimgalore.nf'
+include { BOWTIE2 }                from '../modules/local/bowtie2.nf'
+include { SAMTOOLS_SORT }          from '../modules/local/samtools_sort.nf'
+include { SAMTOOLS_STATS }         from '../modules/local/samtools_stats.nf'
+include { PICARD_MARKDUPLICATES }  from '../modules/local/picard_markduplicates.nf'
+include { FILTERING }              from '../modules/local/filtering.nf'
+include { MACS3_ATAC_NARROW }      from '../modules/local/macs3_atac_narrow.nf'
+include { MACS3_ATAC_BROAD }       from '../modules/local/macs3_atac_broad.nf'
+include { MACS3_CHIP_NARROW }      from '../modules/local/macs3_chip_narrow.nf'
+include { MACS3_CHIP_BROAD }       from '../modules/local/macs3_chip_broad.nf'
+include { HOMER_ANNOTATEPEAKS }    from '../modules/local/homer_annotate.nf'
+include { CALC_FRIP }              from '../modules/local/calc_frip.nf'
+include { DEEPTOOLS }              from '../modules/local/deeptools.nf'
+include { MULTIQC }                from '../modules/local/multiqc.nf'
+include { SAMTOOLS_INDEX }         from '../modules/local/samtools_index.nf'
+
+// Nuovi moduli separati per TSS Profiling
+include { DEEPTOOLS_COMPUTEMATRIX } from '../modules/local/deeptools_computematrix.nf'
+include { DEEPTOOLS_PLOTPROFILE }   from '../modules/local/deeptools_plotprofile.nf'
 
 workflow ATAC_CHIP_PIPELINE {
     take:
@@ -30,8 +33,18 @@ workflow ATAC_CHIP_PIPELINE {
 
     // --- GESTIONE DINAMICA RISORSE GENOMA ---
     def blacklist_path = params.blacklist_file ?: params.genomes[ params.genome ]?.blacklist ?: null
-    def fasta_file = params.fasta_file ?: params.genomes[ params.genome ]?.fasta ?: null
-    def gtf_file   = params.gtf_file   ?: params.genomes[ params.genome ]?.gtf   ?: null
+    def fasta_file     = params.fasta_file ?: params.genomes[ params.genome ]?.fasta ?: null
+    def gtf_file       = params.gtf_file ?: params.genomes[ params.genome ]?.gtf ?: null
+
+    // --- PREPARAZIONE TSS BED (Risolve l'errore IndexError di deepTools) ---
+    // Estraiamo i TSS dal GTF una sola volta per tutto il workflow
+    ch_tss_bed = Channel.fromPath(gtf_file)
+        .map { gtf ->
+            def bed = "tss_regions.bed"
+            def cmd = "awk '\$3==\"transcript\"' $gtf | awk 'BEGIN{OFS=\"\\t\"}{if(\$7==\"+\") print \$1,\$4,\$4+1,\$10,\".\",\$7; else print \$1,\$5-1,\$5,\$10,\".\",\$7}' | sed 's/;//g; s/\"//g' > $bed"
+            cmd.execute()
+            return file(bed)
+        }
 
     // --- INIZIO STEPS ---
 
@@ -43,7 +56,7 @@ workflow ATAC_CHIP_PIPELINE {
     TRIMGALORE ( ch_input )
     ch_versions = ch_versions.mix(TRIMGALORE.out.versions)
 
-    // 3. Allineamento (Usa ch_index passato dal main)
+    // 3. Allineamento
     BOWTIE2 ( TRIMGALORE.out.reads, ch_index )
     ch_versions = ch_versions.mix(BOWTIE2.out.versions)
 
@@ -74,16 +87,20 @@ workflow ATAC_CHIP_PIPELINE {
     SAMTOOLS_STATS ( ch_final_bams.map { it -> [ it[0], it[1] ] } )
     ch_versions = ch_versions.mix(SAMTOOLS_STATS.out.versions)
 
-  // 8. DeepTools (Fingerprint e BigWig)
-DEEPTOOLS ( ch_final_bams )
-ch_versions = ch_versions.mix(DEEPTOOLS.out.versions)
+    // 8. DeepTools (Fingerprint e BigWig)
+    DEEPTOOLS ( ch_final_bams )
+    ch_versions = ch_versions.mix(DEEPTOOLS.out.versions)
 
-// 8b. TSS Profiling
-// Usiamo .join o ci assicuriamo che l'output sia una tupla
-DEEPTOOLS_TSS ( 
-    DEEPTOOLS.out.bw, 
-    file(gtf_file) 
-)
+    // 8b. TSS Profiling (Matrix + Plot)
+    DEEPTOOLS_COMPUTEMATRIX ( 
+        DEEPTOOLS.out.bw, 
+        ch_tss_bed.collect() 
+    )
+    
+    DEEPTOOLS_PLOTPROFILE ( 
+        DEEPTOOLS_COMPUTEMATRIX.out.matrix 
+    )
+    ch_versions = ch_versions.mix(DEEPTOOLS_PLOTPROFILE.out.versions)
 
     // 9. Peak Calling
     ch_peaks = Channel.empty()
@@ -128,7 +145,7 @@ DEEPTOOLS_TSS (
         HOMER_ANNOTATEPEAKS ( ch_peaks, file(fasta_file), file(gtf_file) )
     }
 
-   // 12. MULTIQC
+    // 12. MULTIQC
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
     
     MULTIQC (
@@ -143,7 +160,7 @@ DEEPTOOLS_TSS (
         ch_peaks.map{ it[1] }.collect().ifEmpty([]),
         CALC_FRIP.out.frip.map{ it instanceof List ? it[1] : it }.collect().ifEmpty([]),       
         HOMER_ANNOTATEPEAKS.out.txt.map{ it instanceof List ? it[1] : it }.collect().ifEmpty([]),
-        DEEPTOOLS_TSS.out.table.collect().ifEmpty([]), 
+        DEEPTOOLS_PLOTPROFILE.out.table.map{ it[1] }.collect().ifEmpty([]), 
         ch_versions_multiqc.collect()                  
-)
+    )
 }
