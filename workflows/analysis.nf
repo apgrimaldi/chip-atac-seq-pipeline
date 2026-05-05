@@ -1,47 +1,42 @@
 nextflow.enable.dsl=2
 
 // --- INCLUDE DEI MODULI ---
-include { FASTQC }                 from '../modules/local/fastqc.nf'
-include { TRIMGALORE }             from '../modules/local/trimgalore.nf'
-include { BOWTIE2 }                from '../modules/local/bowtie2.nf'
-include { SAMTOOLS_SORT }          from '../modules/local/samtools_sort.nf'
-include { SAMTOOLS_STATS }         from '../modules/local/samtools_stats.nf'
-include { PICARD_MARKDUPLICATES }  from '../modules/local/picard_markduplicates.nf'
-include { FILTERING }              from '../modules/local/filtering.nf'
-include { MACS3_ATAC_NARROW }      from '../modules/local/macs3_atac_narrow.nf'
-include { MACS3_ATAC_BROAD }       from '../modules/local/macs3_atac_broad.nf'
-include { MACS3_CHIP_NARROW }      from '../modules/local/macs3_chip_narrow.nf'
-include { MACS3_CHIP_BROAD }       from '../modules/local/macs3_chip_broad.nf'
-include { HOMER_ANNOTATEPEAKS }    from '../modules/local/homer_annotate.nf'
-include { CALC_FRIP }              from '../modules/local/calc_frip.nf'
-include { DEEPTOOLS }              from '../modules/local/deeptools.nf'
-include { MULTIQC }                from '../modules/local/multiqc.nf'
-include { SAMTOOLS_INDEX }         from '../modules/local/samtools_index.nf'
-
-// Nuovi moduli separati per TSS Profiling
+include { FASTQC }                  from '../modules/local/fastqc.nf'
+include { TRIMGALORE }              from '../modules/local/trimgalore.nf'
+include { BOWTIE2 }                 from '../modules/local/bowtie2.nf'
+include { SAMTOOLS_SORT }           from '../modules/local/samtools_sort.nf'
+include { SAMTOOLS_STATS }          from '../modules/local/samtools_stats.nf'
+include { PICARD_MARKDUPLICATES }   from '../modules/local/picard_markduplicates.nf'
+include { FILTERING }               from '../modules/local/filtering.nf'
+include { MACS3_ATAC_NARROW }       from '../modules/local/macs3_atac_narrow.nf'
+include { MACS3_ATAC_BROAD }        from '../modules/local/macs3_atac_broad.nf'
+include { MACS3_CHIP_NARROW }       from '../modules/local/macs3_chip_narrow.nf'
+include { MACS3_CHIP_BROAD }        from '../modules/local/macs3_chip_broad.nf'
+include { HOMER_ANNOTATEPEAKS }     from '../modules/local/homer_annotate.nf'
+include { CALC_FRIP }               from '../modules/local/calc_frip.nf'
+include { DEEPTOOLS }               from '../modules/local/deeptools.nf'
+include { MULTIQC }                 from '../modules/local/multiqc.nf'
+include { SAMTOOLS_INDEX }          from '../modules/local/samtools_index.nf'
 include { DEEPTOOLS_COMPUTEMATRIX } from '../modules/local/deeptools_computematrix.nf'
 include { DEEPTOOLS_PLOTPROFILE }   from '../modules/local/deeptools_plotprofile.nf'
 
+// --- PROCESSO PER IL BED (Fuori dal workflow) ---
 process PREPARE_TSS_BED {
-    executor 'local' // Veloce, non serve mandarlo in coda
+    executor 'local'
     input:  path gtf
     output: path "tss_regions.bed"
     script:
     """
-    awk '\$3=="transcript"' $gtf | \
-    awk 'BEGIN{OFS="\\t"}{if(\$7=="+") print \$1,\$4,\$4+1,\$10,".",\$7; else print \$1,\$5-1,\$5,\$10,".",\$7}' | \
+    awk '\$3=="transcript"' $gtf | \\
+    awk 'BEGIN{OFS="\\t"}{if(\$7=="+") print \$1,\$4,\$4+1,\$10,".",\$7; else print \$1,\$5-1,\$5,\$10,".",\$7}' | \\
     sed 's/;//g; s/\"//g' > tss_regions.bed
     """
 }
 
-// Nel main del workflow:
-PREPARE_TSS_BED(file(gtf_file))
-ch_tss_bed = PREPARE_TSS_BED.out
-
 workflow ATAC_CHIP_PIPELINE {
     take:
-    ch_input    // Dal main.nf
-    ch_index    // Dal main.nf
+    ch_input
+    ch_index
 
     main:
     ch_versions = Channel.empty()
@@ -52,14 +47,9 @@ workflow ATAC_CHIP_PIPELINE {
     def fasta_file     = params.fasta_file ?: params.genomes[ params.genome ]?.fasta ?: null
     def gtf_file       = params.gtf_file ?: params.genomes[ params.genome ]?.gtf ?: null
 
-    ch_tss_bed = Channel.fromPath(gtf_file)
-    .map { gtf ->
-        // Creiamo un nome unico o usiamo quello standard
-        def bed_file = task.workDir.resolve("tss_regions.bed") 
-        // Eseguiamo il comando e restituiamo il file oggetto
-        "awk '\$3==\"transcript\"' ${gtf} | awk 'BEGIN{OFS=\"\\t\"}{if(\$7==\"+\") print \$1,\$4,\$4+1,\$10,\".\",\$7; else print \$1,\$5-1,\$5,\$10,\".\",\$7}' | sed 's/;//g; s/\"//g' > tss_regions.bed".execute()
-        return file("${workflow.launchDir}/tss_regions.bed") // Forza il recupero del file appena creato
-    }
+    // 1. Creazione BED (Corretto: una sola chiamata pulita)
+    PREPARE_TSS_BED(file(gtf_file))
+    ch_tss_bed = PREPARE_TSS_BED.out
 
     // --- INIZIO STEPS ---
 
@@ -106,7 +96,7 @@ workflow ATAC_CHIP_PIPELINE {
     DEEPTOOLS ( ch_final_bams )
     ch_versions = ch_versions.mix(DEEPTOOLS.out.versions)
 
-    // 8b. TSS Profiling (Matrix + Plot)
+    // 8b. TSS Profiling (Usa il canale ch_tss_bed creato sopra)
     DEEPTOOLS_COMPUTEMATRIX ( 
         DEEPTOOLS.out.bw, 
         ch_tss_bed.collect() 
