@@ -14,8 +14,16 @@ process MACS3_ATAC_BROAD {
     def prefix   = "${meta.id}_atac_broad"
     def format   = meta.single_end ? 'BAM' : 'BAMPE'
     
-    // Traduzione per l'uomo: hg38/GRCh38 -> hs
-    def m_genome = (params.genome == 'hg38' || params.genome == 'GRCh38') ? 'hs' : params.genome
+    // Mappa dinamica per convertire i nomi genoma nei codici MACS3
+    def genome_map = [
+        'hg38': 'hs', 'GRCh38': 'hs', 'hg19': 'hs',
+        'mm10': 'mm', 'mm9': 'mm', 'GRCm38': 'mm',
+        'dm6': 'dm', 'ce11': 'ce'
+    ]
+    
+    // Se il genoma è in mappa usa il codice (hs, mm..), altrimenti usa la dimensione effettiva
+    // o il nome passato (se l'utente ha passato una dimensione numerica)
+    def m_genome = genome_map[params.genome] ?: params.genome
 
     """
     macs3 callpeak \\
