@@ -14,8 +14,16 @@ process MACS3_ATAC_NARROW {
     def prefix   = "${meta.id}_atac_narrow"
     def format   = meta.single_end ? 'BAM' : 'BAMPE'
     
-    // Traduzione per l'uomo: hg38/GRCh38 -> hs
-    def m_genome = (params.genome == 'hg38' || params.genome == 'GRCh38') ? 'hs' : params.genome
+    // Mappa universale per i codici genoma di MACS3
+    def genome_map = [
+        'hg38': 'hs', 'GRCh38': 'hs', 'hg19': 'hs',
+        'mm10': 'mm', 'mm9': 'mm', 'GRCm38': 'mm',
+        'dm6': 'dm', 'ce11': 'ce'
+    ]
+    
+    // Se il genoma è in mappa usa il codice (hs, mm...), 
+    // altrimenti usa params.genome (utile se passi direttamente la dimensione in pb)
+    def m_genome = genome_map[params.genome] ?: params.genome
 
     """
     macs3 callpeak \\
