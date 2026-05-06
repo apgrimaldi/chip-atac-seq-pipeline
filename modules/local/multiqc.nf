@@ -5,17 +5,18 @@ process MULTIQC {
     publishDir "${params.outdir}/00_MultiQC", mode: 'copy'
 
     input:
-    path multiqc_config      // 1
-    path workflow_summary    // 2
-    path ('fastqc/*')        // 3
-    path ('trimgalore/*')    // 4
-    path ('alignment/*')     // 5
-    path ('picard/*')        // 6
-    path ('samtools/*')      // 7
-    path ('deeptools/*')     // 8  
-    path ('macs3/*')         // 9
-    path ('frip/*')          
-    path ('homer/*')                   
+    path multiqc_config
+    path workflow_summary
+    path ('fastqc/*')
+    path ('trimgalore/*')
+    path ('alignment/*')
+    path ('picard/*')
+    path ('samtools/*')
+    path ('deeptools/*')
+    path ('macs3/*')       // Qui MultiQC cercherà i log di MACS3
+    path ('counts/*')      // <--- AGGIUNTO: Qui passerai i file .narrow_counts.txt e .broad_counts.txt
+    path ('frip/*')
+    path ('homer/*')       // Assicurati che i file qui finiscano come definito nel config
     path versions
 
     output:
