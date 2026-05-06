@@ -8,6 +8,7 @@ process MACS3_ATAC_BROAD {
 
     output:
     tuple val(meta), path("*.broadPeak") , emit: peaks
+    path "*.broad_counts.txt"            , emit: count_broad // AGGIUNTO PER MULTIQC
     path "versions.yml"                  , emit: versions
 
     script:
@@ -21,8 +22,7 @@ process MACS3_ATAC_BROAD {
         'dm6': 'dm', 'ce11': 'ce'
     ]
     
-    // Se il genoma è in mappa usa il codice (hs, mm..), altrimenti usa la dimensione effettiva
-    // o il nome passato (se l'utente ha passato una dimensione numerica)
+    // Se il genoma è in mappa usa il codice (hs, mm..), altrimenti usa params.genome
     def m_genome = genome_map[params.genome] ?: params.genome
 
     """
@@ -34,6 +34,11 @@ process MACS3_ATAC_BROAD {
         --nomodel --shift -100 --extsize 200 \\
         --broad \\
         --broad-cutoff 0.1
+
+    # Estrazione automatica del conteggio per il grafico MultiQC
+    # Conta le righe del file broadPeak
+    count=\$(wc -l < ${prefix}_peaks.broadPeak)
+    echo -e "${meta.id}\t\$count" > ${meta.id}.broad_counts.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
