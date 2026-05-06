@@ -5,18 +5,18 @@ process MULTIQC {
     publishDir "${params.outdir}/00_MultiQC", mode: 'copy'
 
     input:
-    path multiqc_config
-    path workflow_summary
+    path multiqc_config      // File YAML di configurazione
+    path workflow_summary    // File summary.txt
     path ('fastqc/*')
     path ('trimgalore/*')
     path ('alignment/*')
     path ('picard/*')
     path ('samtools/*')
     path ('deeptools/*')
-    path ('macs3/*')       // Qui MultiQC cercherà i log di MACS3
-    path ('counts/*')      // <--- AGGIUNTO: Qui passerai i file .narrow_counts.txt e .broad_counts.txt
+    path ('macs3/*')
+    path ('counts/*')        // Qui arriveranno i file .narrow_counts.txt e .broad_counts.txt univoci
     path ('frip/*')
-    path ('homer/*')       // Assicurati che i file qui finiscano come definito nel config
+    path ('homer/*')
     path versions
 
     output:
@@ -26,12 +26,13 @@ process MULTIQC {
 
     script:
     def args = task.ext.args ?: ''
-    def config = multiqc_config.name != 'empty_config' ? "--config $multiqc_config" : ''
+    // Verifica robusta per il file di config
+    def config_opt = multiqc_config && multiqc_config.name != 'empty_config' ? "--config $multiqc_config" : ''
     """
     multiqc \\
         -f \\
         $args \\
-        $config \\
+        $config_opt \\
         .
 
     cat <<-END_VERSIONS > versions.yml
