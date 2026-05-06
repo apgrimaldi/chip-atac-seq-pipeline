@@ -112,22 +112,32 @@ workflow ATAC_CHIP_PIPELINE {
         ch_broad_counts_mqc  = MACS3_CHIP_BROAD.out.count_broad
     }
 
-    // 10. FRiP
+    // --- 10. FRiP ---
+    // Join tra BAM finali e i picchi narrow (solitamente usati per il FRiP)
     ch_frip_input = ch_final_bams.map { it -> [ it[0], it[1] ] }.join(ch_frip_peaks)
     CALC_FRIP ( ch_frip_input )
 
-    // 11. Annotazione
+    // --- 11. Annotazione ---
     ch_homer_mqc = Channel.empty()
     if (fasta_file && gtf_file) {
+        // Annotiamo tutti i picchi (narrow + broad mixati in ch_peaks)
         HOMER_ANNOTATEPEAKS ( ch_peaks, file(fasta_file), file(gtf_file) )
         ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.txt
     }
 
-    // 12. MULTIQC
+    // --- 12. MULTIQC ---
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
     
-    // Uniamo i conteggi narrow e broad in un unico canale per l'input 'counts/*' del processo MULTIQC
+    // Mixiamo i conteggi narrow e broad per il grafico in stile Screenshot 2026-05-06 alle 09.56.35.png
     ch_all_counts_mqc = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc).collect().ifEmpty([])
+
+    // Prepariamo i log di MACS3 (xls/versions) in modo che non fallisca se un processo non viene eseguito
+    ch_macs_logs_mqc = Channel.empty()
+    if (params.protocol == 'atac') {
+        ch_macs_logs_mqc = MACS3_ATAC_NARROW.out.versions.mix(MACS3_ATAC_BROAD.out.versions)
+    } else {
+        ch_macs_logs_mqc = MACS3_CHIP_NARROW.out.xls.mix(MACS3_CHIP_BROAD.out.versions)
+    }
 
     MULTIQC (
         ch_multiqc_config.collect().ifEmpty([]),
@@ -138,10 +148,9 @@ workflow ATAC_CHIP_PIPELINE {
         PICARD_MARKDUPLICATES.out.metrics.map{ it[1] }.collect().ifEmpty([]),
         SAMTOOLS_STATS.out.stats.map{ it[1] }.collect().ifEmpty([]),
         DEEPTOOLS.out.bw.map{ it instanceof List ? it[1] : it }.collect().ifEmpty([]),
-        MACS3_CHIP_NARROW.out.xls.mix(MACS3_CHIP_BROAD.out.versions).collect().ifEmpty([]), // Passa i log reali di MACS3
-        ch_all_counts_mqc, // <--- QUESTO va nell'input path('counts/*') che abbiamo aggiunto al processo MULTIQC
-        CALC_FRIP.out.frip.map{ it instanceof List ? it[1] : it }.collect().ifEmpty([]),       
+        ch_macs_logs_mqc.collect().ifEmpty([]), // Log dinamici basati sul protocollo
+        ch_all_counts_mqc,                      // Grafici Peak Count (Narrow e Broad separati)
+        CALC_FRIP.out.frip.map{ it[1] }.collect().ifEmpty([]), // Grafico FRiP (Screenshot 2026-05-06 alle 10.17.43.png)
         ch_homer_mqc.map{ it instanceof List ? it[1] : it }.collect().ifEmpty([]),
         ch_versions_multiqc.collect()                    
     )
-}
