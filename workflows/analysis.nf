@@ -124,7 +124,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.stats.map{ it[1] }.collect().ifEmpty([])
     }
 
-    / 12. MULTIQC
+    // 12. MULTIQC
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
     
     // Uniamo i conteggi narrow e broad in un unico canale per i grafici custom
