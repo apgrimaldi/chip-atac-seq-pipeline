@@ -100,7 +100,7 @@ sp:
   frip_score:
     fn: "*.FRiP.txt"
   peak_annotations:
-    fn: "*.stats.txt"
+    fn: "*.homer_stats.txt"
 
 # --- 5. PULIZIA NOMI ---
 sample_names_replace_suffixes:
