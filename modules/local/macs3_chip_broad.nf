@@ -13,25 +13,26 @@ process MACS3_CHIP_BROAD {
     path "versions.yml"                  , emit: versions
 
     script:
-    def prefix   = "${meta.id}_broad"
-    def format   = meta.single_end ? 'BAM' : 'BAMPE'
-    def genome_map = ['hg38': 'hs', 'GRCh38': 'hs', 'hg19': 'hs', 'mm10': 'mm', 'mm9': 'mm', 'GRCm38': 'mm', 'dm6': 'dm', 'ce11': 'ce']
-    def m_genome = genome_map[params.genome] ?: params.genome
-
+    def prefix = "${meta.id}_broad"
     """
-    macs3 callpeak \\
-        -t $ip_bam \\
-        -c $control_bam \\
-        -f $format \\
-        -g $m_genome \\
-        -n $prefix \\
-        --broad \\
+    macs3 callpeak \
+        -t $bam \
+        $args_control \
+        -f BAM \
+        -g hs \
+        -n $prefix \
+        --broad \
         --broad-cutoff 0.1
 
-    # Genera il file di conteggio specifico per i BROAD
-    count=\$(wc -l < ${prefix}.broadPeak)
-    echo -e "${meta.id}\t\$count" > ${meta.id}.broad_counts.txt
+    # CORREZIONE: MACS3 aggiunge "_peaks" al nome indicato con -n
+    if [ -f ${prefix}_peaks.broadPeak ]; then
+        count=\$(wc -l < ${prefix}_peaks.broadPeak)
+    else
+        count=0
+    fi
 
+    echo -e "${meta.id}\t\$count" > ${meta.id}.broad_counts.txt
+    
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         macs3: \$(macs3 --version | sed 's/macs3 //g')
