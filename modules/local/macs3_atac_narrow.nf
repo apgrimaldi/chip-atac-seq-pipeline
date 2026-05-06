@@ -8,21 +8,19 @@ process MACS3_ATAC_NARROW {
 
     output:
     tuple val(meta), path("*.narrowPeak"), emit: peaks
+    path "*.narrow_counts.txt"           , emit: count_narrow // AGGIUNTO PER MULTIQC
     path "versions.yml"                  , emit: versions
 
     script:
     def prefix   = "${meta.id}_atac_narrow"
     def format   = meta.single_end ? 'BAM' : 'BAMPE'
     
-    // Mappa universale per i codici genoma di MACS3
     def genome_map = [
         'hg38': 'hs', 'GRCh38': 'hs', 'hg19': 'hs',
         'mm10': 'mm', 'mm9': 'mm', 'GRCm38': 'mm',
         'dm6': 'dm', 'ce11': 'ce'
     ]
     
-    // Se il genoma è in mappa usa il codice (hs, mm...), 
-    // altrimenti usa params.genome (utile se passi direttamente la dimensione in pb)
     def m_genome = genome_map[params.genome] ?: params.genome
 
     """
@@ -33,6 +31,11 @@ process MACS3_ATAC_NARROW {
         -n $prefix \\
         --nomodel --shift -100 --extsize 200 \\
         --qvalue 0.05
+
+    # Genera il file di conteggio per il grafico MultiQC
+    # Conta le righe del file narrowPeak
+    count=\$(wc -l < ${prefix}_peaks.narrowPeak)
+    echo -e "${meta.id}\t\$count" > ${meta.id}.narrow_counts.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
