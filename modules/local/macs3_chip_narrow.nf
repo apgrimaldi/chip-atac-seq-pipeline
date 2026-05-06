@@ -8,9 +8,9 @@ process MACS3_CHIP_NARROW {
 
     output:
     tuple val(meta), path("*.narrowPeak")   , emit: peaks
-    tuple val(meta), path("*.xls")         , emit: xls
-    path "*.narrow_counts.txt"             , emit: count_narrow
-    path "versions.yml"                    , emit: versions
+    tuple val(meta), path("*.xls")          , emit: xls
+    tuple val(meta), path("*.narrow_counts.txt"), emit: count_narrow
+    path "versions.yml"                     , emit: versions
 
     script:
     def prefix   = "${meta.id}_narrow"
@@ -23,25 +23,28 @@ process MACS3_CHIP_NARROW {
     ]
     def m_genome = genome_map[params.genome] ?: params.genome
 
+    // Gestione opzionale del controllo (se presente)
+    def args_control = control_bam ? "-c $control_bam" : ""
+
     """
     macs3 callpeak \\
         -t $ip_bam \\
-        -c $control_bam \\
+        $args_control \\
         -f $format \\
         -g $m_genome \\
         -n $prefix \\
         --qvalue 0.05
 
-    # MACS3 genera sempre un file che finisce in _peaks.narrowPeak
-    # Usiamo un controllo if per evitare errori se non vengono chiamati picchi
+    # Controllo esistenza file per il conteggio
     if [ -f ${prefix}_peaks.narrowPeak ]; then
         count=\$(wc -l < ${prefix}_peaks.narrowPeak)
     else
         count=0
     fi
 
-    # Scriviamo il file per il grafico "Peak Count" di MultiQC
-    echo -e "${meta.id}\\t\$count" > ${meta.id}.narrow_counts.txt
+    # Generazione file per MultiQC con Header e nome univoco
+    echo -e "Sample\\tNarrow_Peaks" > ${prefix}.narrow_counts.txt
+    echo -e "${meta.id}\\t\$count" >> ${prefix}.narrow_counts.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
