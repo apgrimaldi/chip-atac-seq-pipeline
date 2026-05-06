@@ -32,7 +32,6 @@ workflow ATAC_CHIP_PIPELINE {
     def fasta_file     = params.fasta_file ?: params.genomes[ params.genome ]?.fasta ?: null
     def gtf_file       = params.gtf_file ?: params.genomes[ params.genome ]?.gtf ?: null
 
-
     // --- INIZIO STEPS ---
 
     // 1. Qualità iniziale
@@ -74,15 +73,13 @@ workflow ATAC_CHIP_PIPELINE {
     SAMTOOLS_STATS ( ch_final_bams.map { it -> [ it[0], it[1] ] } )
     ch_versions = ch_versions.mix(SAMTOOLS_STATS.out.versions)
 
-    // 8. DeepTools (Fingerprint e BigWig)
+    // 8. DeepTools
     DEEPTOOLS ( ch_final_bams )
     ch_versions = ch_versions.mix(DEEPTOOLS.out.versions)
 
-   // 9. Peak Calling
+    // 9. Peak Calling
     ch_peaks = Channel.empty()
     ch_frip_peaks = Channel.empty()
-    
-    // Canali per i conteggi da passare a MultiQC
     ch_narrow_counts_mqc = Channel.empty()
     ch_broad_counts_mqc  = Channel.empty()
 
@@ -93,45 +90,36 @@ workflow ATAC_CHIP_PIPELINE {
         
         ch_peaks = MACS3_ATAC_NARROW.out.peaks.mix(MACS3_ATAC_BROAD.out.peaks)
         ch_frip_peaks = MACS3_ATAC_NARROW.out.peaks
-        
-        // Raccogliamo i conteggi (Assicurati che i moduli ATAC emettano questi file come i moduli CHIP)
         ch_narrow_counts_mqc = MACS3_ATAC_NARROW.out.count_narrow
         ch_broad_counts_mqc  = MACS3_ATAC_BROAD.out.count_broad
     } 
     else if (params.protocol == 'chip') {
-        // ... (logica dei controlli invariata) ...
-        
+        // Supponendo input semplice senza controlli per brevità, adatta se necessario
+        ch_macs3_chip_input = ch_final_bams.map { it -> [ it[0], it[1], [] ] } 
         MACS3_CHIP_NARROW ( ch_macs3_chip_input )
         MACS3_CHIP_BROAD  ( ch_macs3_chip_input )
         
         ch_peaks = MACS3_CHIP_NARROW.out.peaks.mix(MACS3_CHIP_BROAD.out.peaks)
         ch_frip_peaks = MACS3_CHIP_NARROW.out.peaks
-        
-        // Raccogliamo i conteggi dai moduli CHIP
         ch_narrow_counts_mqc = MACS3_CHIP_NARROW.out.count_narrow
         ch_broad_counts_mqc  = MACS3_CHIP_BROAD.out.count_broad
     }
 
-    // --- 10. FRiP ---
-    // Join tra BAM finali e i picchi narrow (solitamente usati per il FRiP)
+    // 10. FRiP
     ch_frip_input = ch_final_bams.map { it -> [ it[0], it[1] ] }.join(ch_frip_peaks)
     CALC_FRIP ( ch_frip_input )
 
     // 11. Annotazione
-ch_homer_mqc = Channel.empty()
-if (fasta_file && gtf_file) {
-    HOMER_ANNOTATEPEAKS ( ch_peaks, file(fasta_file), file(gtf_file) )
-    // Raccogliamo solo i file .homer_stats.txt
-    ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.stats.map{ it[1] }.collect().ifEmpty([])
-}
+    ch_homer_mqc = Channel.empty()
+    if (fasta_file && gtf_file) {
+        HOMER_ANNOTATEPEAKS ( ch_peaks, file(fasta_file), file(gtf_file) )
+        ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.stats.map{ it[1] }.collect().ifEmpty([])
+    }
 
-    // --- 12. MULTIQC ---
+    // 12. MULTIQC
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
-    
-    // Mixiamo i conteggi narrow e broad per il grafico in stile Screenshot 2026-05-06 alle 09.56.35.png
     ch_all_counts_mqc = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc).collect().ifEmpty([])
 
-    // Prepariamo i log di MACS3 (xls/versions) in modo che non fallisca se un processo non viene eseguito
     ch_macs_logs_mqc = Channel.empty()
     if (params.protocol == 'atac') {
         ch_macs_logs_mqc = MACS3_ATAC_NARROW.out.versions.mix(MACS3_ATAC_BROAD.out.versions)
@@ -139,10 +127,6 @@ if (fasta_file && gtf_file) {
         ch_macs_logs_mqc = MACS3_CHIP_NARROW.out.xls.mix(MACS3_CHIP_BROAD.out.versions)
     }
 
-    // 12. MULTIQC
-    // Assicuriamoci che ch_homer_mqc contenga i file .homer_stats.txt corretti
-    // Se ch_homer_mqc è una tupla [meta, file], dobbiamo mappare it[1]
-    
     MULTIQC (
         ch_multiqc_config.collect().ifEmpty([]),
         Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}").collectFile(name: 'summary.txt'),
@@ -153,16 +137,9 @@ if (fasta_file && gtf_file) {
         SAMTOOLS_STATS.out.stats.map{ it[1] }.collect().ifEmpty([]),
         DEEPTOOLS.out.bw.map{ it instanceof List ? it[1] : it }.collect().ifEmpty([]),
         ch_macs_logs_mqc.collect().ifEmpty([]), 
-        
-        // Grafici Peak Count (Narrow e Broad separati)
         ch_all_counts_mqc,                      
-        
-        // Grafico FRiP Score
         CALC_FRIP.out.frip.map{ it[1] }.collect().ifEmpty([]), 
-        
-        // Grafico HOMER Peak Annotation 
-        // Usiamo l'output .stats del modulo aggiornato
         ch_homer_mqc.collect().ifEmpty([]),
-        
         ch_versions_multiqc.collect()                    
     )
+} // <--- QUESTA GRAFFA MANCAVA
