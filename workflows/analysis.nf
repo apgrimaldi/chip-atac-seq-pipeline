@@ -117,13 +117,13 @@ workflow ATAC_CHIP_PIPELINE {
     ch_frip_input = ch_final_bams.map { it -> [ it[0], it[1] ] }.join(ch_frip_peaks)
     CALC_FRIP ( ch_frip_input )
 
-    // --- 11. Annotazione ---
-    ch_homer_mqc = Channel.empty()
-    if (fasta_file && gtf_file) {
-        // Annotiamo tutti i picchi (narrow + broad mixati in ch_peaks)
-        HOMER_ANNOTATEPEAKS ( ch_peaks, file(fasta_file), file(gtf_file) )
-        ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.txt
-    }
+    // 11. Annotazione
+ch_homer_mqc = Channel.empty()
+if (fasta_file && gtf_file) {
+    HOMER_ANNOTATEPEAKS ( ch_peaks, file(fasta_file), file(gtf_file) )
+    // Raccogliamo solo i file .homer_stats.txt
+    ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.stats.map{ it[1] }.collect().ifEmpty([])
+}
 
     // --- 12. MULTIQC ---
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
@@ -139,6 +139,10 @@ workflow ATAC_CHIP_PIPELINE {
         ch_macs_logs_mqc = MACS3_CHIP_NARROW.out.xls.mix(MACS3_CHIP_BROAD.out.versions)
     }
 
+    // 12. MULTIQC
+    // Assicuriamoci che ch_homer_mqc contenga i file .homer_stats.txt corretti
+    // Se ch_homer_mqc è una tupla [meta, file], dobbiamo mappare it[1]
+    
     MULTIQC (
         ch_multiqc_config.collect().ifEmpty([]),
         Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}").collectFile(name: 'summary.txt'),
@@ -148,9 +152,17 @@ workflow ATAC_CHIP_PIPELINE {
         PICARD_MARKDUPLICATES.out.metrics.map{ it[1] }.collect().ifEmpty([]),
         SAMTOOLS_STATS.out.stats.map{ it[1] }.collect().ifEmpty([]),
         DEEPTOOLS.out.bw.map{ it instanceof List ? it[1] : it }.collect().ifEmpty([]),
-        ch_macs_logs_mqc.collect().ifEmpty([]), // Log dinamici basati sul protocollo
-        ch_all_counts_mqc,                      // Grafici Peak Count (Narrow e Broad separati)
-        CALC_FRIP.out.frip.map{ it[1] }.collect().ifEmpty([]), // Grafico FRiP (Screenshot 2026-05-06 alle 10.17.43.png)
-        ch_homer_mqc.map{ it instanceof List ? it[1] : it }.collect().ifEmpty([]),
+        ch_macs_logs_mqc.collect().ifEmpty([]), 
+        
+        // Grafici Peak Count (Narrow e Broad separati)
+        ch_all_counts_mqc,                      
+        
+        // Grafico FRiP Score
+        CALC_FRIP.out.frip.map{ it[1] }.collect().ifEmpty([]), 
+        
+        // Grafico HOMER Peak Annotation 
+        // Usiamo l'output .stats del modulo aggiornato
+        ch_homer_mqc.collect().ifEmpty([]),
+        
         ch_versions_multiqc.collect()                    
     )
