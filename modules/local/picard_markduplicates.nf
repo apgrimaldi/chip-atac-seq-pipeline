@@ -3,12 +3,12 @@ process PICARD_MARKDUPLICATES {
     label 'process_medium'
     container 'quay.io/biocontainers/picard:2.27.4--hdfd78af_0'
     
-    publishDir "${params.outdir}/04_deduplicated", mode: 'copy'
+    publishDir "${params.outdir}/04_alignment", mode: 'copy'
 
     input:
     tuple val(meta), path(bam)
-    path fasta  // Rimosso tuple val(meta2) perché il fasta è un file singolo opzionale
-    path fai    // Rimosso tuple val(meta3) perché il fai è un file singolo opzionale
+    path fasta  // File singolo del genoma
+    path fai    // File singolo dell'indice .fai
 
     output:
     tuple val(meta), path("*.removed.bam")       , emit: bam
@@ -23,11 +23,9 @@ process PICARD_MARKDUPLICATES {
     // Gestione riferimento opzionale
     def reference = fasta ? "--REFERENCE_SEQUENCE ${fasta}" : ""
     
-    // Calcolo memoria per Java (80% della memoria assegnata al task)
+    // Calcolo memoria dinamico
     def avail_mem = 3072
-    if (!task.memory) {
-        log.info '[Picard MarkDuplicates] Available memory not known - defaulting to 3GB.'
-    } else {
+    if (task.memory) {
         avail_mem = (task.memory.mega * 0.8).intValue()
     }
 
