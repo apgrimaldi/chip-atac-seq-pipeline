@@ -113,8 +113,8 @@ workflow ATAC_CHIP_PIPELINE {
 
     if (params.protocol == 'atac') {
         ch_macs_input = ch_final_bams.map { it -> [ it[0], it[1] ] }
-        MACS3_ATAC_NARROW ( ch_macs_input, m_genome )
-        MACS3_ATAC_BROAD  ( ch_macs_input, m_genome )
+        MACS3_ATAC_NARROW ( ch_macs_input)
+        MACS3_ATAC_BROAD  ( ch_macs_input)
         
         ch_peaks = MACS3_ATAC_NARROW.out.peaks.mix(MACS3_ATAC_BROAD.out.peaks)
         ch_frip_peaks = MACS3_ATAC_NARROW.out.peaks
@@ -124,8 +124,8 @@ workflow ATAC_CHIP_PIPELINE {
     } 
     else if (params.protocol == 'chip') {
         ch_macs3_chip_input = ch_final_bams.map { meta, bam, bai -> [ meta, bam, [] ] } 
-        MACS3_CHIP_NARROW ( ch_macs3_chip_input, m_genome )
-        MACS3_CHIP_BROAD  ( ch_macs3_chip_input, m_genome )
+        MACS3_CHIP_NARROW ( ch_macs3_chip_input)
+        MACS3_CHIP_BROAD  ( ch_macs3_chip_input )
         
         ch_peaks = MACS3_CHIP_NARROW.out.peaks.mix(MACS3_CHIP_BROAD.out.peaks)
         ch_frip_peaks = MACS3_CHIP_NARROW.out.peaks
