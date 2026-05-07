@@ -53,15 +53,17 @@ nextflow run apgrimaldi/chip-atac-seq-pipeline- \
 To run the pipeline with a custom genome and all required annotations, use the following command:
 
 ```bash
-nextflow run main.nf \
+nextflow run main.nf 
   -profile docker \
-  --protocol <chip/atac> \
-  --input path/to/samplesheet.csv \
-  --fasta_file "/path/to/reference_genome.fna" \
-  --gtf_file "/path/to/annotation.gtf" \
-  --macs_gsize <genome_size> \
-  --blacklist "/path/to/blacklist.bed" \
+  --protocol <chip/atac> 
+  --input path/to/samplesheet.csv 
+  --fasta_file "/path/to/reference_genome.fna" 
+  --gtf_file "/path/to/annotation.gtf" 
+  --macs_gsize <genome_size> 
+  --blacklist "/path/to/blacklist.bed" 
   -resume
+```
+
 
 
 ## Pipeline Summary
@@ -105,12 +107,15 @@ The columns must be structured as follows:
 
 Results are organized in the `results/` folder:
 
-  * **`00_MultiQC/`**: Interactive HTML report (including genome info and tool versions).
-  * **`01_fastqc/`**: Initial read quality.
-  * **`04_alignment/`**: Filtered and indexed BAM files.
-  * **`05_peaks/`**: `.narrowPeak` / `.broadPeak` files and MACS3 logs.
-  * **`06_bigwig/`**: `.bw` files for track visualization.
-  * **`07_homer_annotation/`**: Gene annotation tables.
+* **`00_MultiQC/`** | Interactive HTML report (FastQC, Bowtie2, and deepTools metrics). 
+* **`01_bowtie2_index/`** | Generated Bowtie2 index files (if pre-computed index was not provided). 
+* **`02_fastqc/`** | Initial read quality assessment (raw data). 
+* **`03_trimgalore/`** | Trimmed FASTQ files and adapter removal reports. 
+* **`04_alignment/`** | Sorted, filtered (MAPQ > 30), and indexed BAM files (ready for analysis). 
+* **`05_peaks/`** | MACS3 output: `.narrowPeak` or `.broadPeak` files and bedGraph files. 
+* **`06_bigwig/`** | Signal tracks in `.bw` format for visualization in IGV or UCSC Genome Browser. 
+* **`07_advanced_qc/`** | DeepTools results: Fingerprint plots and correlation matrices.
+* **`08_homer_annotation/`** | Annotated peak files with closest gene info and genomic features. 
 
 https://github.com/apgrimaldi/chip-atac-seq-pipeline-s
 
