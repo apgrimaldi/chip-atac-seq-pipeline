@@ -116,7 +116,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_macs_logs_mqc = MACS3_CHIP_NARROW.out.xls.map{ it[1] }.mix(MACS3_CHIP_BROAD.out.xls.map{ it[1] })
     }
 
-    // 5. ANNOTAZIONE E MULTIQC
+   // 9. ANNOTAZIONE E FRIP
     ch_frip_input = ch_final_bams.map { meta, bam, bai -> [ meta, bam ] }.join(ch_frip_peaks)
     CALC_FRIP ( ch_frip_input )
 
@@ -126,20 +126,26 @@ workflow ATAC_CHIP_PIPELINE {
         ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.stats.map{ it[1] }.collect().ifEmpty([])
     }
 
+    // 10. MULTIQC
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
+    
+    // Prepariamo i conteggi dei picchi (unendo narrow e broad se presenti)
+    // Se non hai ch_narrow_counts_mqc definito sopra, assicurati di averlo creato dopo MACS3
+    ch_all_counts_mqc = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc).map{ it[1] }.collect().ifEmpty([])
 
     MULTIQC (
-        ch_multiqc_config.collect().ifEmpty([]),
-        Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}").collectFile(name: 'summary.txt'),
-        FASTQC.out.zip.map{ it[1] }.collect().ifEmpty([]),
-        TRIMGALORE.out.log.map{ it[1] }.collect().ifEmpty([]),
-        BOWTIE2.out.log.map{ it[1] }.collect().ifEmpty([]),
-        PICARD_MARKDUPLICATES.out.metrics.map{ it[1] }.collect().ifEmpty([]),
-        SAMTOOLS_STATS.out.stats.map{ it[1] }.collect().ifEmpty([]),
-        DEEPTOOLS.out.fingerprint_txt.map{ it[1] }.collect().ifEmpty([]),
-        ch_macs_logs_mqc.collect().ifEmpty([]),
-        CALC_FRIP.out.frip.map{ it[1] }.collect().ifEmpty([]),
-        ch_homer_mqc,
-        ch_versions_multiqc.collect()
+        ch_multiqc_config.collect().ifEmpty([]),                                      // 1
+        Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}").collectFile(name: 'summary.txt'), // 2
+        FASTQC.out.zip.map{ it[1] }.collect().ifEmpty([]),                            // 3
+        TRIMGALORE.out.log.map{ it[1] }.collect().ifEmpty([]),                        // 4
+        BOWTIE2.out.log.map{ it[1] }.collect().ifEmpty([]),                           // 5
+        PICARD_MARKDUPLICATES.out.metrics.map{ it[1] }.collect().ifEmpty([]),         // 6
+        SAMTOOLS_STATS.out.stats.map{ it[1] }.collect().ifEmpty([]),                  // 7
+        DEEPTOOLS.out.fingerprint_txt.map{ it[1] }.collect().ifEmpty([]),             // 8
+        ch_macs_logs_mqc.collect().ifEmpty([]),                                       // 9
+        ch_all_counts_mqc,                                                            // 10 <--- IL MANCANTE
+        CALC_FRIP.out.frip.map{ it[1] }.collect().ifEmpty([]),                        // 11
+        ch_homer_mqc,                                                                 // 12
+        ch_versions_multiqc.collect()                                                 // 13
     )
 }
