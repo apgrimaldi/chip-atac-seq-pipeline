@@ -27,27 +27,36 @@ workflow ATAC_CHIP_PIPELINE {
     ch_versions = Channel.empty()
     ch_multiqc_config = Channel.fromPath("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
 
-    // --- GESTIONE DINAMICA RISORSE GENOMA ---
-    def blacklist_path = params.blacklist_file ?: params.genomes[ params.genome ]?.blacklist ?: null
-    def fasta_file     = params.fasta_file ?: params.genomes[ params.genome ]?.fasta ?: null
-    def gtf_file       = params.gtf_file ?: params.genomes[ params.genome ]?.gtf ?: null
-    def bowtie2_index  = params.bowtie2_index ?: params.genomes[ params.genome ]?.bowtie2 ?: null
+    // --- GESTIONE DINAMICA RISORSE GENOMA (FIXED) ---
+    // Verifichiamo se il genoma esiste nel config, altrimenti usiamo una mappa vuota
+    def genome_exists = params.genomes.containsKey(params.genome)
+    def genome_data   = genome_exists ? params.genomes[ params.genome ] : [:]
+
+    def blacklist_path = params.blacklist_file ?: genome_data.blacklist ?: null
+    def fasta_file     = params.fasta_file     ?: genome_data.fasta     ?: null
+    def gtf_file       = params.gtf_file       ?: genome_data.gtf       ?: null
+    def bowtie2_index  = params.bowtie2_index  ?: genome_data.bowtie2  ?: null
+    
+    // Gestione macs_gsize: priorità comando > config > stringa genoma
+    def m_genome = params.macs_gsize ?: genome_data.macs_gsize ?: params.genome
 
     // --- LOGICA INDICE BOWTIE2 (AUTOMATICA) ---
     ch_index_internal = Channel.empty()
     if (bowtie2_index) {
+        // Se l'indice esiste già (da config o comando)
         ch_index_internal = Channel.fromPath("${bowtie2_index}/*.bt2*").collect()
     } else if (fasta_file) {
+        // Se abbiamo il .fna/.fasta, costruiamo l'indice
         BOWTIE2_BUILD ( file(fasta_file) )
         ch_index_internal = BOWTIE2_BUILD.out.index
         ch_versions = ch_versions.mix(BOWTIE2_BUILD.out.versions)
     } else {
-        error "ERRORE: Fornire --bowtie2_index o --fasta_file"
+        error "ERRORE: Devi fornire almeno --fasta_file per il genoma '${params.genome}'"
     }
 
-    // --- STEPS ---
+    // --- EXECUTION STEPS ---
 
-    // 1. Qualità
+    // 1. Qualità iniziale
     FASTQC ( ch_input )
     ch_versions = ch_versions.mix(FASTQC.out.versions)
 
@@ -55,42 +64,41 @@ workflow ATAC_CHIP_PIPELINE {
     TRIMGALORE ( ch_input )
     ch_versions = ch_versions.mix(TRIMGALORE.out.versions)
 
-    // 3. Allineamento
+    // 3. Allineamento (usa l'indice creato o fornito)
     BOWTIE2 ( TRIMGALORE.out.reads, ch_index_internal )
     ch_versions = ch_versions.mix(BOWTIE2.out.versions)
 
-    // 4. Ordinamento
+    // 4. Ordinamento BAM
     SAMTOOLS_SORT ( BOWTIE2.out.bam )
 
-    // 5. Duplicati
+    // 5. Rimozione Duplicati
     PICARD_MARKDUPLICATES ( SAMTOOLS_SORT.out.bam, [], [] )
     ch_versions = ch_versions.mix(PICARD_MARKDUPLICATES.out.versions)
     
-    ch_picard_bams = PICARD_MARKDUPLICATES.out.bam.map { it ->
-        it.size() == 3 ? it : [ it[0], it[1], it[2] ?: [] ]
-    }
+    // Normalizzazione canali per Picard (assicura tuple corrette)
+    ch_picard_bams = PICARD_MARKDUPLICATES.out.bam.map { meta, bam, bai -> [ meta, bam, bai ?: [] ] }
 
-    // 6. Filtraggio Blacklist
+    // 6. Filtraggio Blacklist e Indicizzazione Finale
     if (blacklist_path) {
-        ch_blacklist = file(blacklist_path)
-        FILTERING ( ch_picard_bams, ch_blacklist )
+        FILTERING ( ch_picard_bams, file(blacklist_path) )
         SAMTOOLS_INDEX ( FILTERING.out.bam )
         ch_final_bams = SAMTOOLS_INDEX.out.bam_bai
         ch_versions = ch_versions.mix(FILTERING.out.versions, SAMTOOLS_INDEX.out.versions)
     } else {
+        // Se non c'è blacklist, indicizziamo direttamente l'output di Picard
         SAMTOOLS_INDEX ( ch_picard_bams.map { it -> [it[0], it[1]] } )
         ch_final_bams = SAMTOOLS_INDEX.out.bam_bai
     }
 
-    // 7. Statistiche
+    // 7. Statistiche finali
     SAMTOOLS_STATS ( ch_final_bams.map { it -> [ it[0], it[1] ] } )
     ch_versions = ch_versions.mix(SAMTOOLS_STATS.out.versions)
 
-    // 8. DeepTools
+    // 8. Creazione BigWig
     DEEPTOOLS ( ch_final_bams )
     ch_versions = ch_versions.mix(DEEPTOOLS.out.versions)
 
-    // 9. Peak Calling
+    // 9. Peak Calling (ATAC o ChIP)
     ch_peaks = Channel.empty()
     ch_frip_peaks = Channel.empty()
     ch_narrow_counts_mqc = Channel.empty()
@@ -99,8 +107,8 @@ workflow ATAC_CHIP_PIPELINE {
 
     if (params.protocol == 'atac') {
         ch_macs_input = ch_final_bams.map { it -> [ it[0], it[1] ] }
-        MACS3_ATAC_NARROW ( ch_macs_input )
-        MACS3_ATAC_BROAD  ( ch_macs_input )
+        MACS3_ATAC_NARROW ( ch_macs_input, m_genome )
+        MACS3_ATAC_BROAD  ( ch_macs_input, m_genome )
         
         ch_peaks = MACS3_ATAC_NARROW.out.peaks.mix(MACS3_ATAC_BROAD.out.peaks)
         ch_frip_peaks = MACS3_ATAC_NARROW.out.peaks
@@ -109,9 +117,9 @@ workflow ATAC_CHIP_PIPELINE {
         ch_macs_logs_mqc = MACS3_ATAC_NARROW.out.versions.map{ it[1] }.mix(MACS3_ATAC_BROAD.out.versions.map{ it[1] })
     } 
     else if (params.protocol == 'chip') {
-        ch_macs3_chip_input = ch_final_bams.map { it -> [ it[0], it[1], [] ] } 
-        MACS3_CHIP_NARROW ( ch_macs3_chip_input )
-        MACS3_CHIP_BROAD  ( ch_macs3_chip_input )
+        ch_macs3_chip_input = ch_final_bams.map { meta, bam, bai -> [ meta, bam, [] ] } 
+        MACS3_CHIP_NARROW ( ch_macs3_chip_input, m_genome )
+        MACS3_CHIP_BROAD  ( ch_macs3_chip_input, m_genome )
         
         ch_peaks = MACS3_CHIP_NARROW.out.peaks.mix(MACS3_CHIP_BROAD.out.peaks)
         ch_frip_peaks = MACS3_CHIP_NARROW.out.peaks
@@ -120,29 +128,24 @@ workflow ATAC_CHIP_PIPELINE {
         ch_macs_logs_mqc = MACS3_CHIP_NARROW.out.xls.map{ it[1] }.mix(MACS3_CHIP_BROAD.out.xls.map{ it[1] })
     }
 
-    // 10. FRiP
+    // 10. Calcolo FRiP score
     ch_frip_input = ch_final_bams.map { it -> [ it[0], it[1] ] }.join(ch_frip_peaks)
     CALC_FRIP ( ch_frip_input )
 
-    // 11. Annotazione
+    // 11. Annotazione dei picchi con HOMER
     ch_homer_mqc = Channel.empty()
     if (fasta_file && gtf_file) {
         HOMER_ANNOTATEPEAKS ( ch_peaks, file(fasta_file), file(gtf_file) )
         ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.stats.map{ it[1] }.collect().ifEmpty([])
     }
 
-    // 12. MULTIQC
+    // 12. Generazione MultiQC Report
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
-    
-    // MIX dei canali conteggi (ora univoci grazie ai prefissi _narrow/_broad)
-    ch_all_counts_mqc = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc)
-        .map{ it[1] } 
-        .collect()
-        .ifEmpty([])
+    ch_all_counts_mqc = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc).map{ it[1] }.collect().ifEmpty([])
 
     MULTIQC (
         ch_multiqc_config.collect().ifEmpty([]),
-        Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}").collectFile(name: 'summary.txt'),
+        Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}\nSize: ${m_genome}").collectFile(name: 'summary.txt'),
         FASTQC.out.zip.map{ it[1] }.collect().ifEmpty([]),
         TRIMGALORE.out.log.map{ it[1] }.collect().ifEmpty([]),
         BOWTIE2.out.log.map{ it[1] }.collect().ifEmpty([]),
