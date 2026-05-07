@@ -40,7 +40,7 @@ workflow ATAC_CHIP_PIPELINE {
         fasta_file     = params.fasta_file     ?: gdata.fasta
         gtf_file       = params.gtf_file       ?: gdata.gtf
         bowtie2_index  = params.bowtie2_index  ?: gdata.bowtie2
-        blacklist_path = params.blacklist      ?: gdata.blacklist
+        blacklist_path = params.blacklist      ?: (gdata.containsKey('blacklist') ? gdata.blacklist : null)
         if (!params.macs_gsize) m_genome = gdata.macs_gsize
     } else {
         fasta_file     = params.fasta_file
@@ -78,6 +78,7 @@ workflow ATAC_CHIP_PIPELINE {
 
     SAMTOOLS_INDEX ( PICARD_MARKDUPLICATES.out.bam )
     
+    // FILTRAGGIO DINAMICO BLACKLIST
     if (blacklist_path) {
         FILTERING ( SAMTOOLS_INDEX.out.bam_bai, file(blacklist_path) )
         SAMTOOLS_INDEX_FINAL ( FILTERING.out.bam )
@@ -92,7 +93,7 @@ workflow ATAC_CHIP_PIPELINE {
 
     ch_macs_input = ch_final_bams.map { meta, bam, bai -> [ meta, bam ] }
     
-    // INIZIALIZZAZIONE CANALI PER EVITARE "NO SUCH VARIABLE"
+    // INIZIALIZZAZIONE CANALI PER MULTIQC
     ch_peaks = Channel.empty()
     ch_frip_peaks = Channel.empty()
     ch_macs_logs_mqc = Channel.empty()
@@ -132,8 +133,6 @@ workflow ATAC_CHIP_PIPELINE {
 
     // 10. MULTIQC
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
-    
-    // Uniamo i conteggi dei picchi per il report
     ch_all_counts_mqc = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc).map{ it[1] }.collect().ifEmpty([])
 
     MULTIQC (
