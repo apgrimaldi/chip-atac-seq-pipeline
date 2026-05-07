@@ -11,7 +11,7 @@ process SAMTOOLS_SORT {
     path "versions.yml"                  , emit: versions
 
     script:
-    def args = task.ext.args ?: '-m 1G' // Usa i parametri del config, altrimenti default 1G
+    def args = task.ext.args ?: '-m 1G'
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
     samtools sort \\
