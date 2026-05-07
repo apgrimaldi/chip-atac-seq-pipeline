@@ -1,27 +1,27 @@
 nextflow.enable.dsl=2
 
 // --- INCLUDE DEI MODULI ---
-include { FASTQC }                  from '../modules/local/fastqc.nf'
-include { TRIMGALORE }              from '../modules/local/trimgalore.nf'
-include { BOWTIE2 }                 from '../modules/local/bowtie2.nf'
-include { SAMTOOLS_SORT }           from '../modules/local/samtools_sort.nf'
-include { SAMTOOLS_STATS }          from '../modules/local/samtools_stats.nf'
-include { PICARD_MARKDUPLICATES }   from '../modules/local/picard_markduplicates.nf'
-include { FILTERING }               from '../modules/local/filtering.nf'
-include { MACS3_ATAC_NARROW }       from '../modules/local/macs3_atac_narrow.nf'
-include { MACS3_ATAC_BROAD }        from '../modules/local/macs3_atac_broad.nf'
-include { MACS3_CHIP_NARROW }       from '../modules/local/macs3_chip_narrow.nf'
-include { MACS3_CHIP_BROAD }        from '../modules/local/macs3_chip_broad.nf'
-include { HOMER_ANNOTATEPEAKS }     from '../modules/local/homer_annotate.nf'
-include { CALC_FRIP }               from '../modules/local/calc_frip.nf'
-include { DEEPTOOLS }               from '../modules/local/deeptools.nf'
-include { MULTIQC }                 from '../modules/local/multiqc.nf'
-include { SAMTOOLS_INDEX }          from '../modules/local/samtools_index.nf'
+include { FASTQC }                 from '../modules/local/fastqc.nf'
+include { TRIMGALORE }             from '../modules/local/trimgalore.nf'
+include { BOWTIE2_BUILD }          from '../modules/local/bowtie2_build.nf'
+include { BOWTIE2 }                from '../modules/local/bowtie2.nf'
+include { SAMTOOLS_SORT }          from '../modules/local/samtools_sort.nf'
+include { SAMTOOLS_STATS }         from '../modules/local/samtools_stats.nf'
+include { PICARD_MARKDUPLICATES }  from '../modules/local/picard_markduplicates.nf'
+include { FILTERING }              from '../modules/local/filtering.nf'
+include { MACS3_ATAC_NARROW }      from '../modules/local/macs3_atac_narrow.nf'
+include { MACS3_ATAC_BROAD }       from '../modules/local/macs3_atac_broad.nf'
+include { MACS3_CHIP_NARROW }      from '../modules/local/macs3_chip_narrow.nf'
+include { MACS3_CHIP_BROAD }       from '../modules/local/macs3_chip_broad.nf'
+include { HOMER_ANNOTATEPEAKS }    from '../modules/local/homer_annotate.nf'
+include { CALC_FRIP }              from '../modules/local/calc_frip.nf'
+include { DEEPTOOLS }              from '../modules/local/deeptools.nf'
+include { MULTIQC }                from '../modules/local/multiqc.nf'
+include { SAMTOOLS_INDEX }         from '../modules/local/samtools_index.nf'
 
 workflow ATAC_CHIP_PIPELINE {
     take:
-    ch_input
-    ch_index
+    ch_input // Canale dagli samplesheet
 
     main:
     ch_versions = Channel.empty()
@@ -31,10 +31,23 @@ workflow ATAC_CHIP_PIPELINE {
     def blacklist_path = params.blacklist_file ?: params.genomes[ params.genome ]?.blacklist ?: null
     def fasta_file     = params.fasta_file ?: params.genomes[ params.genome ]?.fasta ?: null
     def gtf_file       = params.gtf_file ?: params.genomes[ params.genome ]?.gtf ?: null
+    def bowtie2_index  = params.bowtie2_index ?: params.genomes[ params.genome ]?.bowtie2 ?: null
 
-    // --- INIZIO STEPS ---
+    // --- LOGICA INDICE BOWTIE2 (AUTOMATICA) ---
+    ch_index_internal = Channel.empty()
+    if (bowtie2_index) {
+        ch_index_internal = Channel.fromPath("${bowtie2_index}/*.bt2*").collect()
+    } else if (fasta_file) {
+        BOWTIE2_BUILD ( file(fasta_file) )
+        ch_index_internal = BOWTIE2_BUILD.out.index
+        ch_versions = ch_versions.mix(BOWTIE2_BUILD.out.versions)
+    } else {
+        error "ERRORE: Fornire --bowtie2_index o --fasta_file"
+    }
 
-    // 1. Qualità iniziale
+    // --- STEPS ---
+
+    // 1. Qualità
     FASTQC ( ch_input )
     ch_versions = ch_versions.mix(FASTQC.out.versions)
 
@@ -43,7 +56,7 @@ workflow ATAC_CHIP_PIPELINE {
     ch_versions = ch_versions.mix(TRIMGALORE.out.versions)
 
     // 3. Allineamento
-    BOWTIE2 ( TRIMGALORE.out.reads, ch_index )
+    BOWTIE2 ( TRIMGALORE.out.reads, ch_index_internal )
     ch_versions = ch_versions.mix(BOWTIE2.out.versions)
 
     // 4. Ordinamento
@@ -69,7 +82,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_final_bams = SAMTOOLS_INDEX.out.bam_bai
     }
 
-    // 7. Statistiche Allineamento
+    // 7. Statistiche
     SAMTOOLS_STATS ( ch_final_bams.map { it -> [ it[0], it[1] ] } )
     ch_versions = ch_versions.mix(SAMTOOLS_STATS.out.versions)
 
@@ -93,10 +106,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_frip_peaks = MACS3_ATAC_NARROW.out.peaks
         ch_narrow_counts_mqc = MACS3_ATAC_NARROW.out.count_narrow
         ch_broad_counts_mqc  = MACS3_ATAC_BROAD.out.count_broad
-        
-        // Per ATAC raccogliamo i log/versioni
-        ch_macs_logs_mqc = MACS3_ATAC_NARROW.out.versions.map{ it[1] }
-                            .mix(MACS3_ATAC_BROAD.out.versions.map{ it[1] })
+        ch_macs_logs_mqc = MACS3_ATAC_NARROW.out.versions.map{ it[1] }.mix(MACS3_ATAC_BROAD.out.versions.map{ it[1] })
     } 
     else if (params.protocol == 'chip') {
         ch_macs3_chip_input = ch_final_bams.map { it -> [ it[0], it[1], [] ] } 
@@ -107,10 +117,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_frip_peaks = MACS3_CHIP_NARROW.out.peaks
         ch_narrow_counts_mqc = MACS3_CHIP_NARROW.out.count_narrow
         ch_broad_counts_mqc  = MACS3_CHIP_BROAD.out.count_broad
-
-        // Per ChIP passiamo i file .xls che MultiQC adora per le statistiche
-        ch_macs_logs_mqc = MACS3_CHIP_NARROW.out.xls.map{ it[1] }
-                            .mix(MACS3_CHIP_BROAD.out.xls.map{ it[1] })
+        ch_macs_logs_mqc = MACS3_CHIP_NARROW.out.xls.map{ it[1] }.mix(MACS3_CHIP_BROAD.out.xls.map{ it[1] })
     }
 
     // 10. FRiP
@@ -124,13 +131,12 @@ workflow ATAC_CHIP_PIPELINE {
         ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.stats.map{ it[1] }.collect().ifEmpty([])
     }
 
-// --- 12. MULTIQC ---
+    // 12. MULTIQC
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
     
-    // Uniamo i conteggi in un unico canale. 
-    // Il collect() finale è fondamentale per passarli come un'unica lista al modulo.
+    // MIX dei canali conteggi (ora univoci grazie ai prefissi _narrow/_broad)
     ch_all_counts_mqc = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc)
-        .map{ it[1] } // Estraiamo solo il file dal tuple [meta, file]
+        .map{ it[1] } 
         .collect()
         .ifEmpty([])
 
@@ -144,7 +150,7 @@ workflow ATAC_CHIP_PIPELINE {
         SAMTOOLS_STATS.out.stats.map{ it[1] }.collect().ifEmpty([]),
         DEEPTOOLS.out.fingerprint_txt.map{ it[1] }.collect().ifEmpty([]), 
         ch_macs_logs_mqc.collect().ifEmpty([]), 
-        ch_all_counts_mqc, // Passiamo la lista di file collezionati                     
+        ch_all_counts_mqc,                     
         CALC_FRIP.out.frip.map{ it[1] }.collect().ifEmpty([]), 
         ch_homer_mqc,
         ch_versions_multiqc.collect()                                       
