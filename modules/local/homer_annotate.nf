@@ -1,7 +1,7 @@
 process HOMER_ANNOTATEPEAKS {
     tag "$meta.id"
     label 'process_medium'
-    container 'biocontainers/homer:4.11--pl526hc9558a2_3'
+    container 'quay.io/biocontainers/homer:4.11--pl526hc9558a2_3'
 
     input:
     tuple val(meta), path(peak)
