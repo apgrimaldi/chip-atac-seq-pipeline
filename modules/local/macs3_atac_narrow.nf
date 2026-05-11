@@ -5,37 +5,36 @@ process MACS3_ATAC_NARROW {
 
     input:
     tuple val(meta), path(bam)
+    val gsize // Riceve il valore corretto (hs, mm, 2.7e9, ecc.) dal workflow
 
     output:
     tuple val(meta), path("*.narrowPeak"), emit: peaks
-    path "*.narrow_counts.txt"           , emit: count_narrow // AGGIUNTO PER MULTIQC
+    tuple val(meta), path("*.narrow_counts.txt"), emit: count_narrow 
     path "versions.yml"                  , emit: versions
 
     script:
     def prefix   = "${meta.id}_atac_narrow"
     def format   = meta.single_end ? 'BAM' : 'BAMPE'
-    
-    def genome_map = [
-        'hg38': 'hs', 'GRCh38': 'hs', 'hg19': 'hs',
-        'mm10': 'mm', 'mm9': 'mm', 'GRCm38': 'mm',
-        'dm6': 'dm', 'ce11': 'ce'
-    ]
-    
-    def m_genome = genome_map[params.genome] ?: params.genome
 
     """
     macs3 callpeak \\
         -t $bam \\
         -f $format \\
-        -g $m_genome \\
+        -g $gsize \\
         -n $prefix \\
         --nomodel --shift -100 --extsize 200 \\
         --qvalue 0.05
 
-    # Genera il file di conteggio per il grafico MultiQC
-    # Conta le righe del file narrowPeak
-    count=\$(wc -l < ${prefix}_peaks.narrowPeak)
-    echo -e "${meta.id}\t\$count" > ${meta.id}.narrow_counts.txt
+    # Controllo esistenza e conteggio righe del file narrowPeak
+    if [ -f ${prefix}_peaks.narrowPeak ]; then
+        count=\$(wc -l < ${prefix}_peaks.narrowPeak)
+    else
+        count=0
+    fi
+
+    # Generazione file per MultiQC con Header e nome file univoco
+    echo -e "Sample\\tNarrow_Peaks" > ${prefix}.narrow_counts.txt
+    echo -e "${meta.id}\\t\$count" >> ${prefix}.narrow_counts.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
