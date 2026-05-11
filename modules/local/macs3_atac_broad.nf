@@ -5,12 +5,12 @@ process MACS3_ATAC_BROAD {
 
     input:
     tuple val(meta), path(bam)
-    val gsize // Riceve il valore corretto dal workflow (automatico da iGenomes o manuale)
+    val gsize
 
     output:
-    tuple val(meta), path("*.broadPeak") , emit: peaks
-    tuple val(meta), path("*.broad_counts.txt"), emit: count_broad // Cambiato in tuple per coerenza con gli altri moduli
-    path "versions.yml"                  , emit: versions
+    tuple val(meta), path("*.broadPeak")       , emit: peaks
+    tuple val(meta), path("*.broad_counts.txt"), emit: count_broad
+    path "versions.yml"                        , emit: versions
 
     script:
     def prefix   = "${meta.id}_atac_broad"
@@ -26,14 +26,13 @@ process MACS3_ATAC_BROAD {
         --broad \\
         --broad-cutoff 0.1
 
-    # Estrazione automatica del conteggio per il grafico MultiQC
-    if [ -f ${prefix}_peaks.broadPeak ]; then
-        count=\$(wc -l < ${prefix}_peaks.broadPeak)
+    PEAK_FILE=\$(ls *.broadPeak)
+    if [ -f "\$PEAK_FILE" ]; then
+        count=\$(wc -l < "\$PEAK_FILE")
     else
         count=0
     fi
     
-    # Generazione file per MultiQC con header per chiarezza
     echo -e "Sample\\tBroad_Peaks" > ${prefix}.broad_counts.txt
     echo -e "${meta.id}\\t\$count" >> ${prefix}.broad_counts.txt
 
