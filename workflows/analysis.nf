@@ -128,29 +128,33 @@ workflow ATAC_CHIP_PIPELINE {
     CALC_FRIP ( ch_frip_input )
 
     ch_homer_mqc = Channel.empty()
-    if (fasta_file && gtf_file) {
+    
+    if (!params.skip_homer && fasta_file && gtf_file) {
         HOMER_ANNOTATEPEAKS ( ch_frip_peaks, file(fasta_file), file(gtf_file) )
         ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.stats_mqc.map{ it[1] }.collect().ifEmpty([])
     }
 
     ch_diffbind_mqc = Channel.empty()
-    ch_diffbind_prep = ch_bams_branched.ip
-        .map { meta, bam, bai -> [ meta.id, meta, bam, bai ] }
-        .join( ch_frip_peaks.map { meta, peak -> [ meta.id, peak ] } )
-        .map { id, meta, bam, bai, peak -> [ meta, bam, bai, peak ] }
+    // Avvolgiamo tutta la logica di preparazione e analisi in un if
+    if (!params.skip_diffbind) {
+        ch_diffbind_prep = ch_bams_branched.ip
+            .map { meta, bam, bai -> [ meta.id, meta, bam, bai ] }
+            .join( ch_frip_peaks.map { meta, peak -> [ meta.id, peak ] } )
+            .map { id, meta, bam, bai, peak -> [ meta, bam, bai, peak ] }
 
-    ch_db_samplesheet = ch_diffbind_prep
-        .map { meta, bam, bai, peak -> "${meta.id},${meta.condition},${meta.replicate},${bam.name},${peak.name},narrow" }
-        .collectFile(name: 'samplesheet_diffbind.csv', newLine: true, seed: 'SampleID,Condition,Replicate,bamReads,Peaks,PeakCaller')
+        ch_db_samplesheet = ch_diffbind_prep
+            .map { meta, bam, bai, peak -> "${meta.id},${meta.condition},${meta.replicate},${bam.name},${peak.name},narrow" }
+            .collectFile(name: 'samplesheet_diffbind.csv', newLine: true, seed: 'SampleID,Condition,Replicate,bamReads,Peaks,PeakCaller')
 
-    DIFFBIND (
-        ch_db_samplesheet,
-        ch_final_bams.map{ it[1] }.collect(), 
-        ch_final_bams.map{ it[2] }.collect(), 
-        ch_frip_peaks.map{ it[1] }.collect()
-    )
-    ch_diffbind_mqc = DIFFBIND.out.mqc_html.collect().ifEmpty([])
-    ch_versions = ch_versions.mix(DIFFBIND.out.versions)
+        DIFFBIND (
+            ch_db_samplesheet,
+            ch_final_bams.map{ it[1] }.collect(), 
+            ch_final_bams.map{ it[2] }.collect(), 
+            ch_frip_peaks.map{ it[1] }.collect()
+        )
+        ch_diffbind_mqc = DIFFBIND.out.mqc_html.collect().ifEmpty([])
+        ch_versions = ch_versions.mix(DIFFBIND.out.versions)
+    }
 
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
     ch_all_counts_mqc = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc).map{ it[1] }.collect().ifEmpty([])
