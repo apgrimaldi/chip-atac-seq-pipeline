@@ -5,7 +5,7 @@ process MULTIQC {
     publishDir "${params.outdir}/00_MultiQC_Report", mode: 'copy'
 
     input:
-    path multiqc_config      l
+    path multiqc_config      
     path workflow_summary    
     path ('fastqc/*')
     path ('trimgalore/*')
