@@ -1,22 +1,23 @@
 process HOMER_ANNOTATEPEAKS {
     tag "$meta.id"
     label 'process_medium'
-    container 'quay.io/biocontainers/homer:4.11--pl526hc9558a2_3'
+    container 'biocontainers/homer:4.11--pl526hc9558a2_3'
 
     input:
     tuple val(meta), path(peak)
-    path fasta
-    path gtf
+    path  fasta
+    path  gtf
 
     output:
-    tuple val(meta), path("*.annotatePeaks.txt"), emit: txt
-    tuple val(meta), path("*.homer_stats.txt")   , emit: stats 
-    path "versions.yml"                           , emit: versions
+    tuple val(meta), path("*.annotatePeaks.txt") , emit: txt
+    tuple val(meta), path("*.homer_stats_mqc.txt"), emit: stats_mqc
+    path  "versions.yml"                         , emit: versions
 
     script:
-    // Determiniamo se stiamo lavorando su narrow o broad per il nome del file
+    def args = task.ext.args ?: ''
     def type = peak.name.contains('narrow') ? 'narrow' : 'broad'
     def prefix = "${meta.id}.${type}"
+    def VERSION = '4.11' 
     """
     # 1. Gestione GTF (HOMER non accetta .gz)
     GTF_FILE=\$(basename ${gtf})
@@ -32,25 +33,31 @@ process HOMER_ANNOTATEPEAKS {
         $peak \\
         $fasta \\
         -gtf \${ANNOT_FILE} \\
+        $args \\
         -cpu $task.cpus \\
         > ${prefix}.annotatePeaks.txt
 
-    # 3. Estrazione statistiche (Colonna 8 di HOMER contiene l'annotazione)
-    echo -e "Sample\\tIntergenic\\tTTS\\texon\\tintron\\tpromoter-TSS" > ${prefix}.homer_stats.txt
+    # 3. Generazione Statistiche per MultiQC (Custom Content)
+    echo "# id: 'homer_annotations'" > ${prefix}.homer_stats_mqc.txt
+    echo "# section_name: 'HOMER Peak Annotation'" >> ${prefix}.homer_stats_mqc.txt
+    echo "# format: 'tsv'" >> ${prefix}.homer_stats_mqc.txt
+    echo "# plot_type: 'bargraph'" >> ${prefix}.homer_stats_mqc.txt
+    echo "# pconfig:" >> ${prefix}.homer_stats_mqc.txt
+    echo "#    title: 'Peak Annotation Distribution (${type})'" >> ${prefix}.homer_stats_mqc.txt
+    echo -e "Sample\\tIntergenic\\tTTS\\texon\\tintron\\tpromoter-TSS" >> ${prefix}.homer_stats_mqc.txt
     
-    # Calcolo conteggi (grep -c restituisce 0 grazie a || true se non trova nulla)
+    # Estrazione conteggi
     INTERGENIC=\$(cut -f8 ${prefix}.annotatePeaks.txt | grep -c "Intergenic" || true)
     TTS=\$(cut -f8 ${prefix}.annotatePeaks.txt | grep -c "TTS" || true)
     EXON=\$(cut -f8 ${prefix}.annotatePeaks.txt | grep -c "exon" || true)
     INTRON=\$(cut -f8 ${prefix}.annotatePeaks.txt | grep -c "intron" || true)
     PROMOTER=\$(cut -f8 ${prefix}.annotatePeaks.txt | grep -i -c "promoter-TSS" || true)
     
-    echo -e "${prefix}\\t\$INTERGENIC\\t\$TTS\\t\$EXON\\t\$INTRON\\t\$PROMOTER" >> ${prefix}.homer_stats.txt
+    echo -e "${prefix}\\t\$INTERGENIC\\t\$TTS\\t\$EXON\\t\$INTRON\\t\$PROMOTER" >> ${prefix}.homer_stats_mqc.txt
 
-    # 4. Versioni
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        homer: 4.11
+        homer: $VERSION
     END_VERSIONS
     """
 }
