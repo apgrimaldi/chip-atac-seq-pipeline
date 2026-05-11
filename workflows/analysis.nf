@@ -50,7 +50,6 @@ workflow ATAC_CHIP_PIPELINE {
 
     if (!m_genome || m_genome == 'custom') {
         m_genome = 'hs'
-        log.warn "MACS3: Genome size non valida. Impostato default: ${m_genome}"
     }
 
     ch_index_internal = Channel.empty() 
@@ -125,16 +124,13 @@ workflow ATAC_CHIP_PIPELINE {
     }
 
     ch_diffbind_mqc = Channel.empty()
-    
     ch_diffbind_prep = ch_final_bams
         .map { meta, bam, bai -> [ meta.id, meta, bam, bai ] }
         .join( ch_frip_peaks.map { meta, peak -> [ meta.id, peak ] } )
         .map { id, meta, bam, bai, peak -> [ meta, bam, bai, peak ] }
 
     ch_db_samplesheet = ch_diffbind_prep
-        .map { meta, bam, bai, peak -> 
-            "${meta.id},${meta.condition},${meta.replicate},${bam.name},${peak.name},narrow" 
-        }
+        .map { meta, bam, bai, peak -> "${meta.id},${meta.condition},${meta.replicate},${bam.name},${peak.name},narrow" }
         .collectFile(name: 'samplesheet_diffbind.csv', newLine: true, seed: 'SampleID,Condition,Replicate,bamReads,Peaks,PeakCaller')
 
     DIFFBIND (
