@@ -5,24 +5,18 @@ process MACS3_CHIP_NARROW {
 
     input:
     tuple val(meta), path(ip_bam), path(control_bam)
+    val gsize // Riceve il valore calcolato dal workflow (priorità: comando > config > default)
 
     output:
     tuple val(meta), path("*.narrowPeak")   , emit: peaks
-    tuple val(meta), path("*.xls")          , emit: xls
+    tuple val(meta), path("*.xls")           , emit: xls
     tuple val(meta), path("*.narrow_counts.txt"), emit: count_narrow
-    path "versions.yml"                     , emit: versions
+    path "versions.yml"                      , emit: versions
 
     script:
     def prefix   = "${meta.id}_narrow"
     def format   = meta.single_end ? 'BAM' : 'BAMPE'
     
-    def genome_map = [
-        'hg38': 'hs', 'GRCh38': 'hs', 'hg19': 'hs',
-        'mm10': 'mm', 'mm9': 'mm', 'GRCm38': 'mm',
-        'dm6': 'dm', 'ce11': 'ce'
-    ]
-    def m_genome = genome_map[params.genome] ?: params.genome
-
     // Gestione opzionale del controllo (se presente)
     def args_control = control_bam ? "-c $control_bam" : ""
 
@@ -31,7 +25,7 @@ process MACS3_CHIP_NARROW {
         -t $ip_bam \\
         $args_control \\
         -f $format \\
-        -g $m_genome \\
+        -g $gsize \\
         -n $prefix \\
         --qvalue 0.05
 
