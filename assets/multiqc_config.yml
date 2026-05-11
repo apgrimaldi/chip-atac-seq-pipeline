@@ -18,24 +18,24 @@ report_section_order:
   fastqc:
     order: -1000
   cutadapt:
-    order: -950
+    order: -1010
   bowtie2:
-    order: -900
+    order: -1020
   samtools:
-    order: -850
+    order: -1030
   picard:
-    order: -800
+    order: -1040
   # --- SEZIONI CUSTOM 
   diffbind_profile:
-    order: -700
+    order: -1050
   homer_annotations:
-    order: -650
+    order: -1060
   frip_score:
-    order: -600
+    order: -1070
   macs3_narrow_count:
-    order: -550
+    order: -1080
   macs3_broad_count:
-    order: -500
+    order: -1090
  
   deeptools:
     order: -400
