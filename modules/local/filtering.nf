@@ -27,13 +27,24 @@ process FILTERING {
     fi
 
     # 2. Rimozione Blacklist con bedtools
-    # -v: 
-    # -abam: 
-    bedtools intersect \\
+   bedtools intersect \\
         -v \\
         -abam $bam \\
         -b actual_blacklist.bed \\
         > ${prefix}.filtered.bam
+
+    # 3. Statistiche per MultiQC
+    RAW_COUNT=\$(samtools view -c $bam)
+    FILTERED_COUNT=\$(samtools view -c ${prefix}.filtered.bam)
+    
+    echo "# id: 'filtering_stats'" > ${prefix}.filtering_mqc.txt
+    echo "# section_name: 'Filtering: Blacklist Removal'" >> ${prefix}.filtering_mqc.txt
+    echo "# plot_type: 'bargraph'" >> ${prefix}.filtering_mqc.txt
+    echo "# pconfig:" >> ${prefix}.filtering_mqc.txt
+    echo "#    title: 'Reads before and after Blacklist filtering'" >> ${prefix}.filtering_mqc.txt
+    echo "#    ylab: 'Number of Reads'" >> ${prefix}.filtering_mqc.txt
+    echo -e "Sample\\tReads_Raw\\tReads_Filtered" >> ${prefix}.filtering_mqc.txt
+    echo -e "${prefix}\\t\$RAW_COUNT\\t\$FILTERED_COUNT" >> ${prefix}.filtering_mqc.txt
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
