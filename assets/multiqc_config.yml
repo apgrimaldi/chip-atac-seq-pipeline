@@ -15,7 +15,7 @@ module_order:
 report_section_order:
   fastqc:
     order: -1000
-  cutadapt:                # TrimGalore logs
+  cutadapt:                
     order: -900
   bowtie2:
     order: -800
@@ -27,13 +27,13 @@ report_section_order:
     order: -550
   deeptools_bam_coverage:
     order: -540
-  homer_annotations:       # From homer_annotate.nf
+  homer_annotations:      
     order: -400
   macs3_narrow_count: 
     order: -350
   macs3_broad_count: 
     order: -300
-  frip_score:              # From calc_frip.nf
+  frip_score:              
     order: -200
 
 # --- 3. CUSTOM DATA CONFIGURATION ---
