@@ -11,6 +11,8 @@ module_order:
   - custom_content 
   - deeptools
 
+top_modules:
+  - "fastqc"
 
 report_section_order:
   fastqc:
