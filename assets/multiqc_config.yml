@@ -38,9 +38,9 @@ report_section_order:
     order: -1090
  
   deeptools:
-    order: -400
+    order: -2000
   software_versions:
-    order: -100
+    order: -2010
 
 
 custom_data:
