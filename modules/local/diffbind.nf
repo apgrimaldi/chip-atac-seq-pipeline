@@ -21,7 +21,7 @@ process DIFFBIND {
     #!/usr/bin/env Rscript
     library(DiffBind)
 
-    # Caricamento campioni
+   
     samples <- read.csv("${samplesheet}")
     samples\$bamReads <- basename(samples\$bamReads)
     samples\$Peaks    <- basename(samples\$Peaks)
@@ -30,21 +30,19 @@ process DIFFBIND {
         samples\$bamControl <- basename(samples\$bamControl)
     }
 
-    # Creazione oggetto DBA
+  
     db_obj <- dba(sampleSheet=samples)
     
-    # Conteggio letture
+
     db_obj <- dba.count(db_obj, bParallel=TRUE)
 
-    # Tenta di stabilire il contrasto e analizzare
-    # Usiamo un blocco try() per evitare che il crash blocchi l'intera pipeline 
-    # se i campioni sono insufficienti per l'analisi statistica
+    
     analysis_status <- try({
         db_obj <- dba.contrast(db_obj, categories=DBA_CONDITION, minMembers=2)
         db_obj <- dba.analyze(db_obj)
     }, silent=TRUE)
 
-    # Se l'analisi è riuscita, genera i report
+   
     if (!inherits(analysis_status, "try-error")) {
         res_db <- dba.report(db_obj)
         write.csv(as.data.frame(res_db), "diff_bind_results.csv")
@@ -69,7 +67,7 @@ process DIFFBIND {
         writeLines("Analisi differenziale non riuscita: campioni insufficienti o nessun contrasto trovato.", "diffbind_warning.log")
     }
 
-    # Versioning
+
     writeLines(c(
         "\\"${task.process}\\":",
         paste0("    diffbind: ", packageVersion("DiffBind"))
