@@ -25,13 +25,13 @@ report_section_order:
     order: -300
     
   # --- FIX SAMTOOLS (Entrambe le sezioni) ---
-  samtools-stats:
+  samtools-stats-dp:
     order: -400
-  samtools-flagstat:
+  samtools_alignment:
     order: -410
     
   # --- FIX PICARD (Riportato giù) ---
-  picard-markduplicates:
+  picard_deduplication:
     order: -500
 
   # --- SEZIONI CUSTOM (MACS3, FRiP, HOMER) ---
@@ -51,8 +51,8 @@ report_section_order:
     order: -1010
     
   # --- FIX DEEPTOOLS (Forzato in fondo) ---
-  deeptools_fingerprint: {order: -1100}
-  deeptools_qc_metrics: {order: -1110}
+  deeptools_fingerprint:
+    order: -1100
     
   # --- VERSIONI SOFTWARE ---
   software_versions:
