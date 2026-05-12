@@ -22,9 +22,6 @@ module_order:
   - deeptools
   - software_versions
 
-  exclude_modules:
-  - "general_stats"
-
 # Ordine specifico delle sezioni (più alto è il numero, più in basso va)
 report_section_order:
   fastqc:
