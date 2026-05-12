@@ -20,11 +20,6 @@ include { MULTIQC }                 from '../modules/local/multiqc.nf'
 include { SAMTOOLS_INDEX }          from '../modules/local/samtools_index.nf'
 include { SAMTOOLS_INDEX as SAMTOOLS_INDEX_FINAL } from '../modules/local/samtools_index.nf'
 
-/*
-========================================================================================
-    WORKFLOW DEFINITION
-========================================================================================
-*/
 workflow ATAC_CHIP_PIPELINE {
     take:
     ch_input 
@@ -33,7 +28,6 @@ workflow ATAC_CHIP_PIPELINE {
     ch_versions = Channel.empty()
     ch_multiqc_config = Channel.fromPath("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
 
-    // --- GENOME & PARAMETERS CONFIGURATION ---
     def fasta_file     = null
     def gtf_file       = null
     def bowtie2_index  = null
@@ -58,7 +52,6 @@ workflow ATAC_CHIP_PIPELINE {
         m_genome = 'hs'
     }
 
-    // --- PRE-PROCESSING & ALIGNMENT ---
     ch_index_internal = Channel.empty() 
     if (bowtie2_index) {
         ch_index_internal = Channel.fromPath("${bowtie2_index}/*.bt2*").collect()
@@ -94,7 +87,6 @@ workflow ATAC_CHIP_PIPELINE {
     SAMTOOLS_STATS ( ch_final_bams.map { meta, bam, bai -> [ meta, bam ] } )
     DEEPTOOLS ( ch_final_bams )
 
-    // --- PEAK CALLING PREPARATION (IP/Control Branching) ---
     ch_bams_branched = ch_final_bams
         .branch { meta, bam, bai ->
             control: meta.is_control == true
@@ -110,9 +102,8 @@ workflow ATAC_CHIP_PIPELINE {
             .map { control_id, meta, ip_bam, control_bam -> [ meta, ip_bam, control_bam ] }
     }
 
-    // --- PEAK CALLING EXECUTION ---
-    ch_peaks = Channel.empty()
-    ch_frip_peaks = Channel.empty()
+    ch_narrow_peaks = Channel.empty()
+    ch_broad_peaks  = Channel.empty()
     ch_macs_logs_mqc = Channel.empty()
     ch_narrow_counts_mqc = Channel.empty()
     ch_broad_counts_mqc  = Channel.empty()
@@ -120,42 +111,36 @@ workflow ATAC_CHIP_PIPELINE {
     if (params.protocol == 'atac') {
         MACS3_ATAC_NARROW ( ch_macs_input.map{ meta, ip, ctrl -> [meta, ip] }, m_genome )
         MACS3_ATAC_BROAD ( ch_macs_input.map{ meta, ip, ctrl -> [meta, ip] }, m_genome )
-        
-        ch_peaks = MACS3_ATAC_NARROW.out.peaks.mix(MACS3_ATAC_BROAD.out.peaks)
-        ch_frip_peaks = MACS3_ATAC_NARROW.out.peaks
+        ch_narrow_peaks = MACS3_ATAC_NARROW.out.peaks
+        ch_broad_peaks  = MACS3_ATAC_BROAD.out.peaks
         ch_narrow_counts_mqc = MACS3_ATAC_NARROW.out.count_narrow
         ch_broad_counts_mqc  = MACS3_ATAC_BROAD.out.count_broad
         ch_macs_logs_mqc = MACS3_ATAC_NARROW.out.versions.map{ it[1] }.mix(MACS3_ATAC_BROAD.out.versions.map{ it[1] })
     } else {
         MACS3_CHIP_NARROW ( ch_macs_input, m_genome )
         MACS3_CHIP_BROAD ( ch_macs_input, m_genome )
-        
-        ch_peaks = MACS3_CHIP_NARROW.out.peaks.mix(MACS3_CHIP_BROAD.out.peaks)
-        ch_frip_peaks = MACS3_CHIP_NARROW.out.peaks
+        ch_narrow_peaks = MACS3_CHIP_NARROW.out.peaks
+        ch_broad_peaks  = MACS3_CHIP_BROAD.out.peaks
         ch_narrow_counts_mqc = MACS3_CHIP_NARROW.out.count_narrow
         ch_broad_counts_mqc  = MACS3_CHIP_BROAD.out.count_broad
         ch_macs_logs_mqc = MACS3_CHIP_NARROW.out.xls.map{ it[1] }.mix(MACS3_CHIP_BROAD.out.xls.map{ it[1] })
     }
 
-    // --- FRiP CALCULATION ---
-    ch_frip_input = ch_bams_branched.ip.map { meta, bam, bai -> [ meta, bam ] }.join(ch_frip_peaks)
+    ch_frip_input = ch_bams_branched.ip.map { meta, bam, bai -> [ meta, bam ] }.join(ch_narrow_peaks)
     CALC_FRIP ( ch_frip_input )
 
-    // --- ANNOTATION (HOMER) con protezione crash ---
     ch_homer_mqc = Channel.empty()
     if (!params.skip_homer && fasta_file && gtf_file) {
-        // Filtriamo per evitare di passare file nulli a HOMER se MACS3 fallisce su un campione
-        ch_homer_input = ch_frip_peaks.filter { it[1] != null }
+        ch_homer_input = ch_narrow_peaks.mix(ch_broad_peaks).filter { it[1] != null }
         HOMER_ANNOTATEPEAKS ( ch_homer_input, file(fasta_file), file(gtf_file) )
         ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.stats_mqc.map{ it[1] }.collect().ifEmpty([])
     }
 
-    // --- DIFFERENTIAL ANALYSIS (DIFFBIND) ---
     ch_diffbind_mqc = Channel.empty()
     if (!params.skip_diffbind) {
         ch_diffbind_prep = ch_bams_branched.ip
             .map { meta, bam, bai -> [ meta.id, meta, bam, bai ] }
-            .join( ch_frip_peaks.map { meta, peak -> [ meta.id, peak ] } )
+            .join( ch_narrow_peaks.map { meta, peak -> [ meta.id, peak ] } )
             .map { id, meta, bam, bai, peak -> [ meta, bam, bai, peak ] }
 
         ch_db_samplesheet = ch_diffbind_prep
@@ -166,13 +151,12 @@ workflow ATAC_CHIP_PIPELINE {
             ch_db_samplesheet,
             ch_final_bams.map{ it[1] }.collect(), 
             ch_final_bams.map{ it[2] }.collect(), 
-            ch_frip_peaks.map{ it[1] }.collect()
+            ch_narrow_peaks.map{ it[1] }.collect()
         )
         ch_diffbind_mqc = DIFFBIND.out.mqc_html.collect().ifEmpty([])
         ch_versions = ch_versions.mix(DIFFBIND.out.versions)
     }
 
-    // --- REPORTING (MULTIQC) ---
     ch_versions_multiqc = ch_versions.unique().collectFile(name: 'collated_versions.yml')
     ch_all_counts_mqc = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc).map{ it[1] }.collect().ifEmpty([])
 
