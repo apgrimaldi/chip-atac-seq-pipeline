@@ -7,13 +7,11 @@ process BOWTIE2_BUILD {
     path fasta
 
     output:
-    // Emettiamo tutti i file .bt2 generati
     path "*.bt2*", emit: index
     path "versions.yml", emit: versions
 
     script:
     """
-    # Usiamo un nome fisso 'genome_index' invece del baseName del file originale
     bowtie2-build --threads $task.cpus $fasta genome_index
     
     cat <<-END_VERSIONS > versions.yml
