@@ -29,7 +29,7 @@ report_section_order:
     
   # --- FIX PICARD ---
   # Dai tuoi dati l'ID esatto è questo (senza trattino centrale)
-  picard_markduplicates:
+  picard_dups:
     order: -500
 
   # --- SEZIONI CUSTOM ---
@@ -50,8 +50,10 @@ report_section_order:
     
   # --- FIX DEEPTOOLS ---
   # L'ancora corretta per plotFingerprint
-  deeptools_fingerprint:
+  deeptools_plot_fingerprint_count:
     order: -1100
+  deeptools_plot_fingerprint_metrics:
+    order: -1110
     
   # --- VERSIONI ---
   software_versions:
