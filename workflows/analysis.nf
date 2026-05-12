@@ -159,40 +159,36 @@ workflow ATAC_CHIP_PIPELINE {
         ch_versions = ch_versions.mix(DIFFBIND.out.versions)
     }
 
-    ch_versions_multiqc = ch_versions
-        .unique()
-        .collectFile(name: 'collated_versions.yml')
-        .collect()
-        .ifEmpty([])
-
-    ch_macs_logs_final = ch_macs_logs_mqc
-        .collect()
-        .ifEmpty([])
-
-    ch_summary_mqc = Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}")
-        .collectFile(name: 'summary.txt')
-        .collect()
-
-    ch_all_counts_mqc = ch_narrow_counts_mqc
-        .mix(ch_broad_counts_mqc)
-        .map{ it[1] }
-        .collect()
-        .ifEmpty([])
+   ch_versions_mqc = ch_versions.unique().collectFile(name: 'collated_versions.yml').collect().ifEmpty([])
+    
+    ch_fastqc_mqc   = FASTQC.out.zip.map{ it[1] }.collect().ifEmpty([])
+    ch_trim_mqc     = TRIMGALORE.out.log.map{ it[1] }.collect().ifEmpty([])
+    ch_bowtie_mqc   = BOWTIE2.out.log.map{ it[1] }.collect().ifEmpty([])
+    ch_picard_mqc   = PICARD_MARKDUPLICATES.out.metrics.map{ it[1] }.collect().ifEmpty([])
+    ch_stats_mqc    = SAMTOOLS_STATS.out.stats.map{ it[1] }.collect().ifEmpty([])
+    ch_frip_mqc     = CALC_FRIP.out.frip.map{ it[1] }.collect().ifEmpty([])
+    
+    ch_macs_mqc     = ch_macs_logs_mqc.collect().ifEmpty([])
+    ch_counts_mqc   = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc).map{ it[1] }.collect().ifEmpty([])
+    
+    ch_deeptools_mqc = DEEPTOOLS.out.fingerprint_txt.map{ it[1] }
+        .mix(DEEPTOOLS.out.fingerprint_metrics.map{ it[1] })
+        .collect().ifEmpty([])
 
     MULTIQC (
-        ch_multiqc_config.collect().ifEmpty([]),                                       
-        ch_summary_mqc, 
-        FASTQC.out.zip.map{ it[1] }.collect().ifEmpty([]),                             
-        TRIMGALORE.out.log.map{ it[1] }.collect().ifEmpty([]),                         
-        BOWTIE2.out.log.map{ it[1] }.collect().ifEmpty([]),                            
-        PICARD_MARKDUPLICATES.out.metrics.map{ it[1] }.collect().ifEmpty([]),          
-        SAMTOOLS_STATS.out.stats.map{ it[1] }.collect().ifEmpty([]),                   
-        DEEPTOOLS.out.fingerprint_txt.map{ it[1] }.mix(DEEPTOOLS.out.fingerprint_metrics.map{ it[1] }).collect().ifEmpty([]),
-        ch_macs_logs_final,                                        
-        ch_all_counts_mqc,                                                             
-        CALC_FRIP.out.frip.map{ it[1] }.collect().ifEmpty([]),                         
-        ch_homer_mqc,                                                                 
-        ch_diffbind_mqc,                                                               
-        ch_versions_multiqc                                                  
-    )                                    
+        ch_multiqc_config.collect().ifEmpty([]),
+        ch_summary_mqc,
+        ch_fastqc_mqc,
+        ch_trim_mqc,
+        ch_bowtie_mqc,
+        ch_picard_mqc,
+        ch_stats_mqc,
+        ch_deeptools_mqc,
+        ch_macs_mqc,
+        ch_counts_mqc,
+        ch_frip_mqc,
+        ch_homer_mqc,
+        ch_diffbind_mqc,
+        ch_versions_mqc
+    )                      
 }
