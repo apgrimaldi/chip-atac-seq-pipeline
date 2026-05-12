@@ -159,7 +159,11 @@ workflow ATAC_CHIP_PIPELINE {
         ch_versions = ch_versions.mix(DIFFBIND.out.versions)
     }
 
-   ch_versions_mqc = ch_versions.unique().collectFile(name: 'collated_versions.yml').collect().ifEmpty([])
+   ch_summary_mqc = Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}")
+        .collectFile(name: 'summary.txt')
+        .collect()
+
+    ch_versions_mqc = ch_versions.unique().collectFile(name: 'collated_versions.yml').collect().ifEmpty([])
     
     ch_fastqc_mqc   = FASTQC.out.zip.map{ it[1] }.collect().ifEmpty([])
     ch_trim_mqc     = TRIMGALORE.out.log.map{ it[1] }.collect().ifEmpty([])
@@ -190,5 +194,5 @@ workflow ATAC_CHIP_PIPELINE {
         ch_homer_mqc,
         ch_diffbind_mqc,
         ch_versions_mqc
-    )                      
+    )         
 }
