@@ -159,7 +159,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_versions = ch_versions.mix(DIFFBIND.out.versions)
     }
 
-   ch_summary_mqc = Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}")
+  ch_summary_mqc = Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}")
         .collectFile(name: 'summary.txt')
         .collect()
 
@@ -179,6 +179,9 @@ workflow ATAC_CHIP_PIPELINE {
         .mix(DEEPTOOLS.out.fingerprint_metrics.map{ it[1] })
         .collect().ifEmpty([])
 
+    ch_homer_final    = ch_homer_mqc.collect().ifEmpty([])
+    ch_diffbind_final = ch_diffbind_mqc.collect().ifEmpty([])
+
     MULTIQC (
         ch_multiqc_config.collect().ifEmpty([]),
         ch_summary_mqc,
@@ -191,8 +194,8 @@ workflow ATAC_CHIP_PIPELINE {
         ch_macs_mqc,
         ch_counts_mqc,
         ch_frip_mqc,
-        ch_homer_mqc,
-        ch_diffbind_mqc,
+        ch_homer_final,
+        ch_diffbind_final,
         ch_versions_mqc
-    )         
+    )    
 }
