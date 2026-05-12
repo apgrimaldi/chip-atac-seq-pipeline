@@ -173,6 +173,12 @@ workflow ATAC_CHIP_PIPELINE {
         .collectFile(name: 'summary.txt')
         .collect()
 
+    ch_all_counts_mqc = ch_narrow_counts_mqc
+        .mix(ch_broad_counts_mqc)
+        .map{ it[1] }
+        .collect()
+        .ifEmpty([])
+
     MULTIQC (
         ch_multiqc_config.collect().ifEmpty([]),                                       
         ch_summary_mqc, 
@@ -188,5 +194,5 @@ workflow ATAC_CHIP_PIPELINE {
         ch_homer_mqc,                                                                 
         ch_diffbind_mqc,                                                               
         ch_versions_multiqc                                                  
-    )                                               
+    )                                    
 }
