@@ -10,7 +10,7 @@ run_modules:
   - picard
   - deeptools
   - custom_content
-
+  
 # Ordine dei moduli principali
 module_order:
   - fastqc
