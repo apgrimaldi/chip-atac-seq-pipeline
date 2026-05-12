@@ -15,11 +15,12 @@ process HOMER_ANNOTATEPEAKS {
 
     script:
     def args = task.ext.args ?: ''
-    def type = peak.name.contains('narrow') ? 'narrow' : 'broad'
+    def peak_name = peak ? peak.getName() : "unknown"
+    def type = peak_name.contains('narrow') ? 'narrow' : 'broad'
     def prefix = "${meta.id}.${type}"
     def VERSION = '4.11' 
     """
-    # 1. Gestione GTF (HOMER non accetta .gz)
+    # 1. Gestione GTF 
     GTF_FILE=\$(basename ${gtf})
     if [[ \${GTF_FILE} == *.gz ]]; then
         gunzip -c ${gtf} > reference.gtf
@@ -37,7 +38,7 @@ process HOMER_ANNOTATEPEAKS {
         -cpu $task.cpus \\
         > ${prefix}.annotatePeaks.txt
 
-    # 3. Generazione Statistiche per MultiQC (Custom Content)
+    # 3.  Statistiche per MultiQC (Custom Content)
     echo "# id: 'homer_annotations_${type}'" > ${prefix}.homer_stats_mqc.txt
     echo "# section_name: 'HOMER Peak Annotation (${type.capitalize()})'" >> ${prefix}.homer_stats_mqc.txt
     echo "# format: 'tsv'" >> ${prefix}.homer_stats_mqc.txt
