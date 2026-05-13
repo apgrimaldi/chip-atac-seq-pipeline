@@ -16,7 +16,6 @@ process DIFFBIND {
     path "versions.yml"                , emit: versions
 
     script:
-    // Usiamo shell invece di script per gestire meglio i caratteri speciali di Bash
     shell:
     '''
     #!/usr/bin/env Rscript
@@ -33,7 +32,6 @@ process DIFFBIND {
     
     sample_info <- dba.show(db_obj)
     keep_mask <- as.numeric(sample_info$Intervals) > 0
-    
     if(sum(keep_mask) < length(keep_mask)) {
         db_obj <- dba(db_obj, mask=keep_mask)
     }
@@ -48,27 +46,30 @@ process DIFFBIND {
 
     db_obj <- dba.count(db_obj, bParallel=TRUE)
 
-    pdf("diffbind_profile.pdf")
-    try(dba.plotProfile(db_obj, bUseSampleSheet=TRUE))
-    dev.off()
+    if (requireNamespace("profileplyr", quietly = TRUE)) {
+        pdf("diffbind_profile.pdf")
+        try(dba.plotProfile(db_obj, bUseSampleSheet=TRUE))
+        dev.off()
 
-    png("diffbind_profile.png", width=1000, height=800, res=120)
-    try(dba.plotProfile(db_obj, bUseSampleSheet=TRUE))
-    dev.off()
+        png("diffbind_profile.png", width=1000, height=800, res=120)
+        try(dba.plotProfile(db_obj, bUseSampleSheet=TRUE))
+        dev.off()
+    } else {
+        message("profileplyr not installed. Skipping profile plot.")
+    }
 
-    # Passiamo a Bash per generare gli HTML
+    writeLines(c(paste0("\\"!{task.process}\\":"), paste0("    diffbind: ", packageVersion("DiffBind"))), "versions.yml")
+    
+    # Esecuzione Bash separata per evitare errori di quoting in R
     system("
         if [ -f diffbind_correlation.png ]; then
             IMG_CORR=$(base64 -w 0 diffbind_correlation.png)
             echo '<div style=\"text-align:center;\"><img src=\"data:image/png;base64,'$IMG_CORR'\" style=\"max-width:100%;\"></div>' > diffbind_corr_mqc.html
         fi
-
         if [ -f diffbind_profile.png ]; then
             IMG_PROF=$(base64 -w 0 diffbind_profile.png)
             echo '<div style=\"text-align:center;\"><img src=\"data:image/png;base64,'$IMG_PROF'\" style=\"max-width:100%;\"></div>' > diffbind_profile_mqc.html
         fi
     ")
-
-    writeLines(c(paste0("\\"!{task.process}\\":"), paste0("    diffbind: ", packageVersion("DiffBind"))), "versions.yml")
     '''
 }
