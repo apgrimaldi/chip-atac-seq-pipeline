@@ -97,11 +97,9 @@ workflow ATAC_CHIP_PIPELINE {
     }
 
     SAMTOOLS_STATS ( ch_final_bams.map { meta, bam, bai -> [ meta, bam ] } )
+    
+    // --- DeepTools: genera BigWig per visualizzazione e tecnici (1bp) ---
     DEEPTOOLS ( ch_final_bams )
-
-    // --- Lanceotron (Deep Learning Peak Calling) ---
-    LANCEOTRON ( ch_final_bams )
-    ch_versions = ch_versions.mix(LANCEOTRON.out.versions)
 
     // --- Branch for IP vs Control ---
     ch_bams_branched = ch_final_bams.branch { meta, bam, bai ->
@@ -109,6 +107,26 @@ workflow ATAC_CHIP_PIPELINE {
         ip:      true
     }
 
+    // --- Lanceotron Input Preparation (BAM + BigWig 1bp) ---
+    if (params.protocol == 'atac') {
+        ch_lanceotron_input = ch_bams_branched.ip
+            .join(DEEPTOOLS.out.bw_lanceotron)
+            .map { meta, bam, bai, bw -> [ meta, bam, bw, [], [] ] } // Niente controllo
+    } else {
+        ch_lanceotron_input = ch_bams_branched.ip
+            .join(DEEPTOOLS.out.bw_lanceotron)
+            .map { meta, bam, bai, bw -> [ meta.control, meta, bam, bw ] }
+            .combine(ch_bams_branched.control.join(DEEPTOOLS.out.bw_lanceotron)
+                .map { meta, bam, bai, bw -> [ meta.id, bam, bw ] }, by: 0)
+            .map { ctrl_id, meta, ip_bam, ip_bw, ctrl_bam, ctrl_bw -> 
+                [ meta, ip_bam, ip_bw, ctrl_bam, ctrl_bw ] 
+            }
+    }
+
+    LANCEOTRON ( ch_lanceotron_input )
+    ch_versions = ch_versions.mix(LANCEOTRON.out.versions)
+
+    // --- MACS3 Peak Calling Preparation ---
     if (params.protocol == 'atac') {
         ch_macs_input = ch_bams_branched.ip.map { meta, bam, bai -> [ meta, bam, [] ] }
     } else {
@@ -118,7 +136,6 @@ workflow ATAC_CHIP_PIPELINE {
             .map { control_id, meta, ip_bam, control_bam -> [ meta, ip_bam, control_bam ] }
     }
 
-    // --- MACS3 Peak Calling ---
     if (params.protocol == 'atac') {
         MACS3_ATAC_NARROW ( ch_macs_input.map{ meta, ip, ctrl -> [meta, ip] }, m_genome )
         MACS3_ATAC_BROAD ( ch_macs_input.map{ meta, ip, ctrl -> [meta, ip] }, m_genome )
@@ -171,15 +188,14 @@ workflow ATAC_CHIP_PIPELINE {
             ch_final_bams.map{ it[2] }.collect(), 
             ch_narrow_peaks.map{ it[1] }.collect() 
         )
-        // Raccoglie sia l'HTML (immagini) che il TXT (matrice interattiva)
         ch_diffbind_mqc = DIFFBIND.out.mqc_html.mix(DIFFBIND.out.mqc_txt).collect().ifEmpty([])
         ch_versions = ch_versions.mix(DIFFBIND.out.versions)
     }
 
-    // --- Profileplyr Analysis (Using Lanceotron Results) ---
+    // --- Profileplyr Analysis (Using Lanceotron Peaks & Display BigWigs) ---
     PROFILEPLYR (
         LANCEOTRON.out.peaks.map{ it[1] }.collect(),
-        LANCEOTRON.out.bigwig_res1.map{ it[1] }.collect()
+        DEEPTOOLS.out.bw_display.map{ it[1] }.collect()
     )
     ch_profileplyr_mqc = PROFILEPLYR.out.mqc_html.collect().ifEmpty([])
     ch_versions = ch_versions.mix(PROFILEPLYR.out.versions)
@@ -195,6 +211,7 @@ workflow ATAC_CHIP_PIPELINE {
     ch_frip_mqc     = CALC_FRIP.out.frip.map{ it[1] }.collect().ifEmpty([])
     ch_macs_mqc     = ch_macs_logs_mqc.collect().ifEmpty([])
     ch_counts_mqc   = ch_narrow_counts_mqc.mix(ch_broad_counts_mqc).map{ it[1] }.collect().ifEmpty([])
+    ch_lanceotron_mqc = LANCEOTRON.out.counts_mqc.collect().ifEmpty([])
     ch_deeptools_mqc = DEEPTOOLS.out.fingerprint_txt.map{ it[1] }.mix(DEEPTOOLS.out.fingerprint_metrics.map{ it[1] }).collect().ifEmpty([])
 
     MULTIQC (
@@ -212,6 +229,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_homer_mqc,
         ch_diffbind_mqc,
         ch_profileplyr_mqc,
+        ch_lanceotron_mqc, // Passato a MULTIQC come previsto nel modulo
         ch_versions_mqc
     )
 }
