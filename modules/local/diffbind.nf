@@ -38,6 +38,7 @@ process DIFFBIND {
         db_obj <- dba(db_obj, mask=keep_mask)
     }
 
+    # --- Correlation Heatmap ---
     pdf("diffbind_correlation.pdf")
     plot(db_obj)
     dev.off()
@@ -50,7 +51,7 @@ process DIFFBIND {
     cat(paste0(
         "\\n",
         "<div style='text-align: center;'>\\n",
-        "  <img src='data:image/png;base64,", img_corr_64, "' style='max-width: 100%; height: auto;'>\\n",
+        "  <img src='data:image/png;base64,", img_corr_64, "' style='width: 600px; height: auto;'>\\n",
         "</div>"
     ), file="diffbind_corr_mqc.html")
 
@@ -71,6 +72,7 @@ process DIFFBIND {
         res_db <- dba.report(db_obj)
         write.csv(as.data.frame(res_db), "diff_bind_results.csv")
 
+        # --- PCA Plot ---
         png("diffbind_pca.png", width=1000, height=800, res=120)
         dba.plotPCA(db_obj, attributes=contrast_category, label=DBA_ID)
         dev.off()
@@ -83,7 +85,7 @@ process DIFFBIND {
         cat(paste0(
             "\\n",
             "<div style='text-align: center;'>\\n",
-            "  <img src='data:image/png;base64,", img_pca_64, "' style='max-width: 100%; height: auto;'>\\n",
+            "  <img src='data:image/png;base64,", img_pca_64, "' style='width: 600px; height: auto;'>\\n",
             "</div>"
         ), file="diffbind_pca_mqc.html")
     }
