@@ -1,5 +1,10 @@
 nextflow.enable.dsl=2
 
+/*
+========================================================================================
+    INCLUDE MODULES
+========================================================================================
+*/
 include { FASTQC } from '../modules/local/fastqc.nf'
 include { TRIMGALORE } from '../modules/local/trimgalore.nf'
 include { BOWTIE2_BUILD } from '../modules/local/bowtie2_build.nf'
@@ -22,6 +27,11 @@ include { MULTIQC } from '../modules/local/multiqc.nf'
 include { SAMTOOLS_INDEX } from '../modules/local/samtools_index.nf'
 include { SAMTOOLS_INDEX as SAMTOOLS_INDEX_FINAL } from '../modules/local/samtools_index.nf'
 
+/*
+========================================================================================
+    WORKFLOW ATAC_CHIP_PIPELINE
+========================================================================================
+*/
 workflow ATAC_CHIP_PIPELINE {
     take:
     ch_input
@@ -30,6 +40,7 @@ workflow ATAC_CHIP_PIPELINE {
     ch_versions = Channel.empty()
     ch_multiqc_config = Channel.fromPath("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
 
+    // --- Genome Configuration ---
     def reference_file   = null
     def gtf_file         = null
     def bowtie2_index    = null
@@ -49,9 +60,9 @@ workflow ATAC_CHIP_PIPELINE {
         bowtie2_index  = params.bowtie2_index
         blacklist_path = params.blacklist
     }
-
     if (!m_genome || m_genome == 'custom') { m_genome = 'hs' }
 
+    // --- Alignment Index ---
     ch_index_internal = Channel.empty() 
     if (bowtie2_index) {
         ch_index_internal = Channel.fromPath("${bowtie2_index}/*.bt2*").collect()
@@ -61,6 +72,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_versions = ch_versions.mix(BOWTIE2_BUILD.out.versions)
     }
 
+    // --- Preprocessing ---
     FASTQC ( ch_input )
     TRIMGALORE ( ch_input )
     ch_versions = ch_versions.mix(FASTQC.out.versions, TRIMGALORE.out.versions)
@@ -87,9 +99,11 @@ workflow ATAC_CHIP_PIPELINE {
     SAMTOOLS_STATS ( ch_final_bams.map { meta, bam, bai -> [ meta, bam ] } )
     DEEPTOOLS ( ch_final_bams )
 
+    // --- Lanceotron (Deep Learning Peak Calling) ---
     LANCEOTRON ( ch_final_bams )
     ch_versions = ch_versions.mix(LANCEOTRON.out.versions)
 
+    // --- Branch for IP vs Control ---
     ch_bams_branched = ch_final_bams.branch { meta, bam, bai ->
         control: meta.is_control == true
         ip:      true
@@ -104,6 +118,7 @@ workflow ATAC_CHIP_PIPELINE {
             .map { control_id, meta, ip_bam, control_bam -> [ meta, ip_bam, control_bam ] }
     }
 
+    // --- MACS3 Peak Calling ---
     if (params.protocol == 'atac') {
         MACS3_ATAC_NARROW ( ch_macs_input.map{ meta, ip, ctrl -> [meta, ip] }, m_genome )
         MACS3_ATAC_BROAD ( ch_macs_input.map{ meta, ip, ctrl -> [meta, ip] }, m_genome )
@@ -122,6 +137,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_macs_logs_mqc = MACS3_CHIP_NARROW.out.xls.map{ it[1] }.mix(MACS3_CHIP_BROAD.out.xls.map{ it[1] })
     }
 
+    // --- FRiP Score & Annotation ---
     ch_frip_input = ch_bams_branched.ip.map { meta, bam, bai -> [ meta, bam ] }.join(ch_narrow_peaks)
     CALC_FRIP ( ch_frip_input )
 
@@ -133,6 +149,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_homer_mqc = HOMER_ANNOTATEPEAKS.out.stats_mqc.map{ it[1] }.collect().ifEmpty([])
     }
 
+    // --- DiffBind Analysis ---
     ch_diffbind_mqc = Channel.empty()
     if (!params.skip_diffbind) {
         ch_diffbind_prep = ch_bams_branched.ip
@@ -154,10 +171,12 @@ workflow ATAC_CHIP_PIPELINE {
             ch_final_bams.map{ it[2] }.collect(), 
             ch_narrow_peaks.map{ it[1] }.collect() 
         )
-        ch_diffbind_mqc = DIFFBIND.out.mqc_html.collect().ifEmpty([])
+        // Raccoglie sia l'HTML (immagini) che il TXT (matrice interattiva)
+        ch_diffbind_mqc = DIFFBIND.out.mqc_html.mix(DIFFBIND.out.mqc_txt).collect().ifEmpty([])
         ch_versions = ch_versions.mix(DIFFBIND.out.versions)
     }
 
+    // --- Profileplyr Analysis (Using Lanceotron Results) ---
     PROFILEPLYR (
         LANCEOTRON.out.peaks.map{ it[1] }.collect(),
         LANCEOTRON.out.bigwig_res1.map{ it[1] }.collect()
@@ -165,6 +184,7 @@ workflow ATAC_CHIP_PIPELINE {
     ch_profileplyr_mqc = PROFILEPLYR.out.mqc_html.collect().ifEmpty([])
     ch_versions = ch_versions.mix(PROFILEPLYR.out.versions)
 
+    // --- Final Quality Control Report (MultiQC) ---
     ch_summary_mqc = Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}").collectFile(name: 'summary.txt').collect()
     ch_versions_mqc = ch_versions.unique().collectFile(name: 'collated_versions.yml').collect().ifEmpty([])
     ch_fastqc_mqc   = FASTQC.out.zip.map{ it[1] }.collect().ifEmpty([])
