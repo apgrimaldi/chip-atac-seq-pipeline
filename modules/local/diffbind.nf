@@ -21,6 +21,7 @@ process DIFFBIND {
     """
     #!/usr/bin/env Rscript
     library(DiffBind)
+    library(base64enc)
 
     samples <- read.csv("${samplesheet}")
     samples\$bamReads <- basename(as.character(samples\$bamReads))
@@ -31,6 +32,12 @@ process DIFFBIND {
 
     db_obj <- dba(sampleSheet=samples)
     
+    sample_info <- dba.show(db_obj)
+    keep_mask <- as.numeric(sample_info\$Intervals) > 0
+    if(sum(keep_mask) < length(keep_mask)) {
+        db_obj <- dba(db_obj, mask=keep_mask)
+    }
+
     pdf("diffbind_correlation.pdf")
     plot(db_obj)
     dev.off()
@@ -39,10 +46,11 @@ process DIFFBIND {
     plot(db_obj)
     dev.off()
 
+    img_corr_64 <- base64encode("diffbind_correlation.png")
     cat(paste0(
         "\\n",
         "<div style='text-align: center;'>\\n",
-        "  <img src='diffbind_correlation.png' style='max-width: 100%; height: auto;'>\\n",
+        "  <img src='data:image/png;base64,", img_corr_64, "' style='max-width: 100%; height: auto;'>\\n",
         "</div>"
     ), file="diffbind_corr_mqc.html")
 
@@ -57,7 +65,7 @@ process DIFFBIND {
         contrast_category <- if ("Condition" %in% colnames(samples) && length(unique(samples\$Condition)) > 1) DBA_CONDITION else DBA_ANTIBODY
         db_obj <- dba.contrast(db_obj, categories=contrast_category, minMembers=2)
         db_obj <- dba.analyze(db_obj)
-    }, silent=FALSE)
+    }, silent=TRUE)
 
     if (!inherits(analysis_status, "try-error") && !is.null(db_obj\$contrasts)) {
         res_db <- dba.report(db_obj)
@@ -70,6 +78,14 @@ process DIFFBIND {
         pdf("diffbind_volcano.pdf")
         dba.plotVolcano(db_obj)
         dev.off()
+
+        img_pca_64 <- base64encode("diffbind_pca.png")
+        cat(paste0(
+            "\\n",
+            "<div style='text-align: center;'>\\n",
+            "  <img src='data:image/png;base64,", img_pca_64, "' style='max-width: 100%; height: auto;'>\\n",
+            "</div>"
+        ), file="diffbind_pca_mqc.html")
     }
 
     writeLines(c(
