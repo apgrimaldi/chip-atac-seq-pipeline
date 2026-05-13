@@ -4,6 +4,8 @@ process BOWTIE2 {
     // Container multi-tool con bowtie2 e samtools
     container 'quay.io/biocontainers/mulled-v2-ac74a7f02cebcfcc07d8e8d1d750af9c83b4d45a:f70b31a2db15c023d641c32f433fb02cd04df5a6-0'
 
+//quay.io/biocontainers/mulled-v2-c742dccc9d8fabfcff2af0d8d6799dbc711366cf:0b0dea2b5dffed0cff6fb77b4377a5940cd4319a-0
+
     input:
     tuple val(meta), path(reads)
     path index // Riceve la lista di file .bt2 (passata con .collect() nel workflow)
