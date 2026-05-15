@@ -172,27 +172,31 @@ workflow ATAC_CHIP_PIPELINE {
         ch_versions = ch_versions.mix(DIFFBIND.out.versions)
     }
 
-    PROFILEPLYR_LANCE ( 
-        LANCEOTRON.out.peaks.map{ it[1] }.collect(), 
-        DEEPTOOLS.out.bw_display.map{ it[1] }.collect(),
-        "lanceotron"
-    )
+    // --- BLOCCO PROFILEPLYR CON SKIP ---
+    ch_profileplyr_mqc = Channel.empty()
+    if (!params.skip_profileplyr) {
+        PROFILEPLYR_LANCE ( 
+            LANCEOTRON.out.peaks.map{ it[1] }.collect(), 
+            DEEPTOOLS.out.bw_display.map{ it[1] }.collect(),
+            "lanceotron"
+        )
 
-    PROFILEPLYR_MACS ( 
-        ch_narrow_peaks.map{ it[1] }.collect(), 
-        DEEPTOOLS.out.bw_display.map{ it[1] }.collect(),
-        "macs"
-    )
+        PROFILEPLYR_MACS ( 
+            ch_narrow_peaks.map{ it[1] }.collect(), 
+            DEEPTOOLS.out.bw_display.map{ it[1] }.collect(),
+            "macs"
+        )
 
-    ch_profileplyr_mqc = PROFILEPLYR_LANCE.out.mqc_html
-        .mix(PROFILEPLYR_MACS.out.mqc_html)
-        .collect()
-        .ifEmpty([])
+        ch_profileplyr_mqc = PROFILEPLYR_LANCE.out.mqc_html
+            .mix(PROFILEPLYR_MACS.out.mqc_html)
+            .collect()
+            .ifEmpty([])
 
-    ch_versions = ch_versions.mix(
-        PROFILEPLYR_LANCE.out.versions,
-        PROFILEPLYR_MACS.out.versions
-    )
+        ch_versions = ch_versions.mix(
+            PROFILEPLYR_LANCE.out.versions,
+            PROFILEPLYR_MACS.out.versions
+        )
+    }
 
     ch_summary_mqc = Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}").collectFile(name: 'summary.txt').collect()
     ch_versions_mqc = ch_versions.unique().collectFile(name: 'collated_versions.yml').collect().ifEmpty([])
