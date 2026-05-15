@@ -22,33 +22,34 @@ process PROFILEPLYR {
     library(profileplyr)
     library(base64enc)
     library(rtracklayer)
+    library(SummarizedExperiment)
 
-    # Identificazione file
+    # 1. Identificazione file
     peak_files <- list.files(pattern = "\\\\.(bed|narrowPeak|broadPeak)\$")
     bw_files <- list.files(pattern = "\\\\.(bw|bigWig)\$")
 
-    # Importazione picchi
+    # 2. Importazione picchi
     peaks_gr <- rtracklayer::import(peak_files[1])
 
-    # Creazione oggetto Profileplyr (Nota la 'P' maiuscola)
-    # Usiamo i nomi dei file puliti per la colonna sampleData
-    pro_obj <- Profileplyr(
+    # 3. Creazione oggetto Profileplyr
+    # Usiamo 'as_profileplyr' che è la funzione corretta per BigWig/BAM
+    pro_obj <- as_profileplyr(
         peaks_gr,
         binsize = 50,
         distance = 2000,
         sampleData = data.frame(bamReads = bw_files, row.names = basename(bw_files))
     )
 
-    # Generazione Heatmap
+    # 4. Generazione Heatmap
     png("profile_heatmap.png", width=1000, height=1200, res=150)
-    generateEnrichedHeatmap(pro_obj)
+    profileplyr::generateEnrichedHeatmap(pro_obj)
     dev.off()
 
     pdf("profile_heatmap.pdf", width=7, height=9)
-    generateEnrichedHeatmap(pro_obj)
+    profileplyr::generateEnrichedHeatmap(pro_obj)
     dev.off()
 
-    # Preparazione HTML per MultiQC
+    # 5. Preparazione HTML per MultiQC
     img_64 <- base64encode("profile_heatmap.png")
     cat(paste0(
         "\\n",
