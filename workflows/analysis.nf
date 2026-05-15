@@ -172,7 +172,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_versions = ch_versions.mix(DIFFBIND.out.versions)
     }
 
-    // --- BLOCCO PROFILEPLYR CON SKIP ---
+    // --- BLOCCO PROFILEPLYR CON SISTEMA DI SKIP ---
     ch_profileplyr_mqc = Channel.empty()
     if (!params.skip_profileplyr) {
         PROFILEPLYR_LANCE ( 
@@ -196,6 +196,9 @@ workflow ATAC_CHIP_PIPELINE {
             PROFILEPLYR_LANCE.out.versions,
             PROFILEPLYR_MACS.out.versions
         )
+    } else {
+        // Se skippato, inviamo un valore vuoto per sbloccare MultiQC
+        ch_profileplyr_mqc = Channel.value([])
     }
 
     ch_summary_mqc = Channel.value("Protocol: ${params.protocol}\nGenome: ${params.genome}").collectFile(name: 'summary.txt').collect()
@@ -216,7 +219,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_homer_mqc,
         ch_diffbind_mqc,
         ch_profileplyr_mqc,
-        LANCEOTRON.out.counts_mqc.collect().ifEmpty([]),
+        LANCEOTRON.out.counts_mqc.collect().ifEmpty([]), // Aggiunto collect per sicurezza
         ch_versions_mqc
     )
 }
