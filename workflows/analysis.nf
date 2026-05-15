@@ -221,7 +221,7 @@ workflow ATAC_CHIP_PIPELINE {
         ch_homer_mqc,
         ch_diffbind_mqc,
         ch_profileplyr_mqc,
-        LANCEOTRON.out.counts_mqc.collect().ifEmpty([]),
+        LANCEOTRON.out.counts_mqc.map{ it[1] }.collect().ifEmpty([]), // <--- AGGIUNTO .map{ it[1] } QUI
         ch_versions_mqc
     )
 }
