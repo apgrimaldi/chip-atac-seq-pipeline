@@ -21,11 +21,13 @@ process PROFILEPLYR {
     #!/usr/bin/env Rscript
     library(profileplyr)
     library(base64enc)
+    library(rtracklayer)
 
     peak_files <- list.files(pattern = "\\\\.(bed|narrowPeak|broadPeak)\$")
     bw_files <- list.files(pattern = "\\\\.(bw|bigWig)\$")
 
-    peaks_gr <- profileplyr::readPeakFile(peak_files[1])
+    # Usiamo rtracklayer::import invece di readPeakFile
+    peaks_gr <- rtracklayer::import(peak_files[1])
 
     pro_obj <- profileplyr(
         peaks_gr,
@@ -53,7 +55,8 @@ process PROFILEPLYR {
 
     writeLines(c(
         "\\"${task.process}\\":",
-        paste0("    profileplyr: ", packageVersion("profileplyr"))
+        paste0("    profileplyr: ", packageVersion("profileplyr")),
+        paste0("    rtracklayer: ", packageVersion("rtracklayer"))
     ), "versions.yml")
     """
 }
