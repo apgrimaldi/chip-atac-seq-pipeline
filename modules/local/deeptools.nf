@@ -19,11 +19,10 @@ process DEEPTOOLS {
 
     script:
     def prefix = "${meta.id}"
-    // Gestione estensione reads
     def extend = (meta.single_end && params.fragment_size > 0) ? "--extendReads ${params.fragment_size}" : (params.single_end ? "--extendReads" : "")
     
     """
-    # 1. BigWig per Visualizzazione (Normalizzato, BinSize 10bp per fluidità)
+    # 1. BigWig per Visualizzazione (BinSize 10bp)
     bamCoverage \\
         --bam $bam \\
         --outFileName ${prefix}.display.bw \\
@@ -32,11 +31,12 @@ process DEEPTOOLS {
         --numberOfProcessors $task.cpus \\
         $extend
 
-    # 2. BigWig per Lanceotron (NON normalizzato, BinSize 1bp - Fondamentale per L6n)
+    # 2. BigWig per Lanceotron (BinSize 1bp + Normalizzazione RPKM)
     bamCoverage \\
         --bam $bam \\
         --outFileName ${prefix}.l6n.bw \\
         --binSize 1 \\
+        --normalizeUsing RPKM \\
         --numberOfProcessors $task.cpus \\
         $extend
 
